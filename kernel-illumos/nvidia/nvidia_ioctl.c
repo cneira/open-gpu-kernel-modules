@@ -31,6 +31,9 @@
 #include "nv_speculation_barrier.h"
 
 #include <sys/policy.h>
+#include <sys/visual_io.h>
+#include <sys/kd.h>
+#include <sys/fbio.h>
 
 /*
  * Fills ci[] with the attached, non-excluded GPUs.  Fails if the caller's
@@ -225,6 +228,27 @@ nvidia_ioctl(dev_t dev, int cmd, intptr_t arg, int mode, cred_t *credp,
         default:
             nv_file_private_rele(nvifp);
             return (ENOTTY);
+    }
+
+    if (nvifp->kind == NV_NODE_GPU && nvifp->nvis->console_fb != NULL)
+    {
+        switch (cmd)
+        {
+            case VIS_DEVINIT:
+            case VIS_GETIDENTIFIER:
+            case VIS_CONSCLEAR:
+            case VIS_CONSCOPY:
+            case VIS_CONSDISPLAY:
+            case VIS_CONSCURSOR:
+            case KDSETMODE:
+            case KDGETMODE:
+            case FBIOGATTR:
+            case FBIOGTYPE:
+                status = gfxp_fb_ioctl(dev, cmd, arg, mode, credp,
+                    rvalp, nvifp->nvis->console_fb);
+                nv_file_private_rele(nvifp);
+                return (status);
+        }
     }
 
     if (NV_IOC_TYPE(ucmd) != NV_IOCTL_MAGIC || NV_IOC_DIR(ucmd) != NV_IOC_INOUT)

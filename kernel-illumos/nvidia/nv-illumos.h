@@ -50,6 +50,7 @@
 #include <sys/ddidevmap.h>
 #include <sys/pci.h>
 #include <sys/sunndi.h>
+#include <sys/gfx_private.h>
 
 /*
  * The NVIDIA headers below expect a freestanding environment and supply their
@@ -297,6 +298,7 @@ struct nv_illumos_state_s {
     nv_state_t              nv_state;
 
     dev_info_t             *dip;
+    gfxp_fb_softc_ptr_t     console_fb;     /* boot framebuffer console */
     struct pci_dev          pci_dev;        /* handed to nvidia-uvm */
     int                     instance;
     NvU32                   minor_num;      /* index for /dev/nvidiaN */

@@ -35,6 +35,7 @@
 #include "nv-reg.h"
 
 #include <sys/pci_cap.h>
+#include <sys/framebuffer.h>
 
 const NvBool nv_is_rm_firmware_supported_os = NV_TRUE;
 
@@ -311,6 +312,50 @@ nv_assign_minor(nv_illumos_state_t *nvis)
     return (ENOSPC);
 }
 
+/* Only the GPU containing the bootloader's scanout may own /dev/fb. */
+static void
+nv_console_attach(nv_illumos_state_t *nvis)
+{
+    nv_state_t *nv = NV_STATE_PTR(nvis);
+    uint64_t offset;
+
+    if (fb_info.fb_type != FB_TYPE_RGB &&
+        fb_info.fb_type != FB_TYPE_INDEXED)
+        return;
+    if (fb_info.paddr == 0 || fb_info.fb_size == 0 ||
+        fb_info.screen.y == 0 || fb_info.pitch == 0 ||
+        fb_info.pitch > fb_info.fb_size / fb_info.screen.y ||
+        fb_info.paddr < nv->fb->cpu_address ||
+        fb_info.fb_size > nv->fb->size)
+        return;
+
+    offset = fb_info.paddr - nv->fb->cpu_address;
+    if (offset > nv->fb->size - fb_info.fb_size)
+        return;
+
+    nvis->console_fb = gfxp_fb_softc_alloc();
+    if (nvis->console_fb == NULL)
+        return;
+    if (gfxp_fb_attach(nvis->dip, DDI_ATTACH, nvis->console_fb) !=
+        DDI_SUCCESS)
+    {
+        gfxp_fb_softc_free(nvis->console_fb);
+        nvis->console_fb = NULL;
+        dev_err(nvis->dip, CE_WARN, "boot framebuffer console attach failed");
+    }
+}
+
+static void
+nv_console_detach(nv_illumos_state_t *nvis)
+{
+    if (nvis->console_fb == NULL)
+        return;
+
+    (void) gfxp_fb_detach(nvis->dip, DDI_DETACH, nvis->console_fb);
+    gfxp_fb_softc_free(nvis->console_fb);
+    nvis->console_fb = NULL;
+}
+
 static int
 nv_attach_gpu(dev_info_t *dip)
 {
@@ -509,6 +554,8 @@ nv_attach_gpu(dev_info_t *dip)
 
     rm_enable_dynamic_power_management(sp, nv);
 
+    nv_console_attach(nvis);
+
     if (nv->ats_support)
         WRITE_ONCE(nv_ats_supported, NV_TRUE);
     else
@@ -581,6 +628,8 @@ nv_detach_gpu(dev_info_t *dip)
     rm_check_for_gpu_surprise_removal(sp, nv);
 
     nv_stop_device(nv, sp);
+
+    nv_console_detach(nvis);
 
     rm_cleanup_dynamic_power_management(sp, nv);
 
