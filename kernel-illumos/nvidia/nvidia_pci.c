@@ -31,6 +31,7 @@
 
 #include "nv-illumos.h"
 
+#include <sys/pci_cfgacc.h>
 #include <sys/pci_cap.h>
 #include <sys/pcie.h>
 
@@ -40,6 +41,7 @@ typedef struct nv_pci_handle_s {
     list_node_t         link;
     dev_info_t         *dip;
     ddi_acc_handle_t    cfg;
+    uint16_t            bdf;
     NvU8                bus;
     NvU8                slot;
     NvU8                func;
@@ -70,8 +72,10 @@ nv_pci_handles_fini(void)
 
     while ((h = list_remove_head(&nv_pci_handles)) != NULL)
     {
-        pci_config_teardown(&h->cfg);
-        ndi_rele_devi(h->dip);
+        if (h->cfg != NULL)
+            pci_config_teardown(&h->cfg);
+        if (h->dip != NULL)
+            ndi_rele_devi(h->dip);
         kmem_free(h, sizeof (*h));
     }
 
@@ -114,35 +118,6 @@ nv_pci_is_pci_function(dev_info_t *dip)
                 "class-code"));
 }
 
-typedef struct {
-    NvU8        bus;
-    NvU8        slot;
-    NvU8        func;
-    dev_info_t *dip;
-} nv_pci_find_t;
-
-static int
-nv_pci_find_bdf(dev_info_t *dip, void *arg)
-{
-    nv_pci_find_t *f = arg;
-    NvU8 bus, slot, func;
-
-    if (!nv_pci_is_pci_function(dip))
-        return (DDI_WALK_CONTINUE);
-
-    if (nv_pci_dip_bdf(dip, &bus, &slot, &func) != DDI_SUCCESS)
-        return (DDI_WALK_CONTINUE);
-
-    if (bus == f->bus && slot == f->slot && func == f->func)
-    {
-        ndi_hold_devi(dip);
-        f->dip = dip;
-        return (DDI_WALK_TERMINATE);
-    }
-
-    return (DDI_WALK_CONTINUE);
-}
-
 static nv_pci_handle_t *
 nv_pci_handle_create(dev_info_t *dip, NvU8 bus, NvU8 slot, NvU8 func)
 {
@@ -156,6 +131,7 @@ nv_pci_handle_create(dev_info_t *dip, NvU8 bus, NvU8 slot, NvU8 func)
     }
 
     h->dip = dip;
+    h->bdf = PCI_GETBDF(bus, slot, func);
     h->bus = bus;
     h->slot = slot;
     h->func = func;
@@ -215,9 +191,11 @@ void* NV_API_CALL os_pci_init_handle(
 )
 {
     nv_pci_handle_t *h;
-    nv_pci_find_t f;
+    nv_pci_handle_t *new_handle;
+    uint16_t bdf;
+    uint16_t vendor_id;
 
-    if (!nv_may_sleep() || domain != 0)
+    if (!nv_may_sleep() || domain != 0 || slot >= 32 || function >= 8)
         return NULL;
 
     mutex_enter(&nv_pci_handles_lock);
@@ -231,22 +209,38 @@ void* NV_API_CALL os_pci_init_handle(
 
     if (h == NULL)
     {
-        f.bus = bus;
-        f.slot = slot;
-        f.func = function;
-        f.dip = NULL;
-
-        ndi_devi_enter(ddi_root_node());
-        ddi_walk_devs(ddi_get_child(ddi_root_node()), nv_pci_find_bdf, &f);
-        ndi_devi_exit(ddi_root_node());
-
-        if (f.dip == NULL)
+        /* The PCI topology scan runs during attach.  Walking the device
+         * tree here can select a function whose parent nexus is not ready. */
+        bdf = PCI_GETBDF(bus, slot, function);
+        vendor_id = pci_cfgacc_get16(NULL, bdf, PCI_CONF_VENID);
+        if (vendor_id == 0 || vendor_id == 0xffff)
             return NULL;
 
-        h = nv_pci_handle_for_dip(f.dip);
-        ndi_rele_devi(f.dip);
+        new_handle = kmem_zalloc(sizeof (*new_handle), KM_SLEEP);
+        new_handle->bdf = bdf;
+        new_handle->bus = bus;
+        new_handle->slot = slot;
+        new_handle->func = function;
+        new_handle->vendor = vendor_id;
+        new_handle->device = pci_cfgacc_get16(NULL, bdf,
+            PCI_CONF_DEVID);
+
+        mutex_enter(&nv_pci_handles_lock);
+        for (h = list_head(&nv_pci_handles); h != NULL;
+             h = list_next(&nv_pci_handles, h))
+        {
+            if (h->bus == bus && h->slot == slot && h->func == function)
+                break;
+        }
         if (h == NULL)
-            return NULL;
+        {
+            list_insert_tail(&nv_pci_handles, new_handle);
+            h = new_handle;
+            new_handle = NULL;
+        }
+        mutex_exit(&nv_pci_handles_lock);
+        if (new_handle != NULL)
+            kmem_free(new_handle, sizeof (*new_handle));
     }
 
     if (vendor != NULL)
@@ -267,7 +261,8 @@ NV_STATUS NV_API_CALL os_pci_read_byte(void *handle, NvU32 offset, NvU8 *pReturn
         return NV_ERR_NOT_SUPPORTED;
     }
 
-    *pReturnValue = pci_config_get8(h->cfg, offset);
+    *pReturnValue = h->cfg != NULL ? pci_config_get8(h->cfg, offset) :
+        pci_cfgacc_get8(NULL, h->bdf, offset);
     return NV_OK;
 }
 
@@ -275,13 +270,15 @@ NV_STATUS NV_API_CALL os_pci_read_word(void *handle, NvU32 offset, NvU16 *pRetur
 {
     nv_pci_handle_t *h = handle;
 
-    if (h == NULL || offset >= NV_PCIE_CFG_MAX_OFFSET)
+    if (h == NULL || offset > NV_PCIE_CFG_MAX_OFFSET - sizeof (NvU16) ||
+        (offset & (sizeof (NvU16) - 1)) != 0)
     {
         *pReturnValue = 0xffff;
         return NV_ERR_NOT_SUPPORTED;
     }
 
-    *pReturnValue = pci_config_get16(h->cfg, offset);
+    *pReturnValue = h->cfg != NULL ? pci_config_get16(h->cfg, offset) :
+        pci_cfgacc_get16(NULL, h->bdf, offset);
     return NV_OK;
 }
 
@@ -289,13 +286,15 @@ NV_STATUS NV_API_CALL os_pci_read_dword(void *handle, NvU32 offset, NvU32 *pRetu
 {
     nv_pci_handle_t *h = handle;
 
-    if (h == NULL || offset >= NV_PCIE_CFG_MAX_OFFSET)
+    if (h == NULL || offset > NV_PCIE_CFG_MAX_OFFSET - sizeof (NvU32) ||
+        (offset & (sizeof (NvU32) - 1)) != 0)
     {
         *pReturnValue = 0xffffffff;
         return NV_ERR_NOT_SUPPORTED;
     }
 
-    *pReturnValue = pci_config_get32(h->cfg, offset);
+    *pReturnValue = h->cfg != NULL ? pci_config_get32(h->cfg, offset) :
+        pci_cfgacc_get32(NULL, h->bdf, offset);
     return NV_OK;
 }
 
@@ -306,7 +305,10 @@ NV_STATUS NV_API_CALL os_pci_write_byte(void *handle, NvU32 offset, NvU8 value)
     if (h == NULL || offset >= NV_PCIE_CFG_MAX_OFFSET)
         return NV_ERR_NOT_SUPPORTED;
 
-    pci_config_put8(h->cfg, offset, value);
+    if (h->cfg != NULL)
+        pci_config_put8(h->cfg, offset, value);
+    else
+        pci_cfgacc_put8(NULL, h->bdf, offset, value);
     return NV_OK;
 }
 
@@ -314,10 +316,14 @@ NV_STATUS NV_API_CALL os_pci_write_word(void *handle, NvU32 offset, NvU16 value)
 {
     nv_pci_handle_t *h = handle;
 
-    if (h == NULL || offset >= NV_PCIE_CFG_MAX_OFFSET)
+    if (h == NULL || offset > NV_PCIE_CFG_MAX_OFFSET - sizeof (NvU16) ||
+        (offset & (sizeof (NvU16) - 1)) != 0)
         return NV_ERR_NOT_SUPPORTED;
 
-    pci_config_put16(h->cfg, offset, value);
+    if (h->cfg != NULL)
+        pci_config_put16(h->cfg, offset, value);
+    else
+        pci_cfgacc_put16(NULL, h->bdf, offset, value);
     return NV_OK;
 }
 
@@ -325,10 +331,14 @@ NV_STATUS NV_API_CALL os_pci_write_dword(void *handle, NvU32 offset, NvU32 value
 {
     nv_pci_handle_t *h = handle;
 
-    if (h == NULL || offset >= NV_PCIE_CFG_MAX_OFFSET)
+    if (h == NULL || offset > NV_PCIE_CFG_MAX_OFFSET - sizeof (NvU32) ||
+        (offset & (sizeof (NvU32) - 1)) != 0)
         return NV_ERR_NOT_SUPPORTED;
 
-    pci_config_put32(h->cfg, offset, value);
+    if (h->cfg != NULL)
+        pci_config_put32(h->cfg, offset, value);
+    else
+        pci_cfgacc_put32(NULL, h->bdf, offset, value);
     return NV_OK;
 }
 
@@ -366,7 +376,7 @@ void NV_API_CALL os_pci_remove(void *handle)
 {
     nv_pci_handle_t *h = handle;
 
-    if (h == NULL)
+    if (h == NULL || h->dip == NULL)
         return;
 
     ndi_hold_devi(h->dip);
@@ -397,7 +407,7 @@ NV_STATUS NV_API_CALL os_enable_pci_req_atomics(void *handle,
     uint32_t comp_cap;
     uint16_t cap, devctl2;
 
-    if (h == NULL)
+    if (h == NULL || h->dip == NULL || h->cfg == NULL)
         return NV_ERR_NOT_SUPPORTED;
 
     switch (type)
@@ -485,7 +495,7 @@ void NV_API_CALL os_pci_trigger_flr(void *handle)
     uint16_t cap, devctl;
     uint32_t devcap;
 
-    if (h == NULL)
+    if (h == NULL || h->dip == NULL || h->cfg == NULL)
         return;
 
     nv_printf(NV_DBG_INFO, "NVRM: %s() Start to trigger FLR\n", __func__);
