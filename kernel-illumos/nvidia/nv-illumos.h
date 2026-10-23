@@ -242,6 +242,7 @@ typedef struct nv_illumos_file_private_s {
     nv_illumos_state_t     *nvis;           /* NULL until the open succeeds */
     void                   *subsys_priv;    /* nvlink/nvswitch open state */
     NvBool                  closing;
+    NvBool                  console_only;   /* no RM open or usage reference */
     nvidia_stack_t         *sp;
     int                     open_rc;
     NV_STATUS               adapter_status;
@@ -325,6 +326,7 @@ struct nv_illumos_state_s {
     /* serializes open/close/start/stop, like Linux's ldata_lock */
     ksema_t                 ldata_lock;
     volatile uint64_t       usage_count;
+    uint32_t                console_open_count; /* fallback clones; ldata_lock */
 
     /* per-GPU work queue */
     struct os_work_queue    queue;
