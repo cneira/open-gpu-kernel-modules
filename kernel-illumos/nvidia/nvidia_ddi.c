@@ -371,6 +371,8 @@ nv_attach_gpu(dev_info_t *dip)
     uint16_t vendor, device, subvendor, subdevice, cmd;
     uint8_t class, subclass;
     NvU8 bus, slot, func;
+    void *diag_bdf_handle;
+    NvU16 diag_vendor = 0xffff, diag_device = 0xffff;
     char name[32];
     int rc;
 
@@ -440,7 +442,17 @@ nv_attach_gpu(dev_info_t *dip)
         goto fail_free;
     }
 
+    /* Temporary sno-wmy hardware check: demand a BDF-only handle first. */
+    diag_bdf_handle = os_pci_init_handle(0, bus, slot, func,
+        &diag_vendor, &diag_device);
     nv->handle = nv_pci_handle_for_dip(dip);
+    nv_printf(NV_DBG_ERRORS,
+        "sno-wmy BDF-first: bdf=%02x:%02x.%x before=%p after=%p "
+        "vendor=%04x device=%04x result=%s\n",
+        bus, slot, func, diag_bdf_handle, nv->handle,
+        diag_vendor, diag_device,
+        diag_bdf_handle != NULL && diag_bdf_handle == nv->handle &&
+        diag_vendor == vendor && diag_device == device ? "PASS" : "FAIL");
     if (nv->handle == NULL)
         goto fail_free;
 

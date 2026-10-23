@@ -200,6 +200,9 @@ nv_pci_handle_for_dip(dev_info_t *dip)
     {
         /* RM may already retain this BDF-only object.  Publish cfg first
          * so readers that see dip can safely use both attached fields. */
+        nv_printf(NV_DBG_ERRORS,
+            "sno-wmy BDF-first: promoting bdf=%04x handle=%p\n",
+            bdf, h);
         h->cfg = candidate->cfg;
         candidate->cfg = NULL;
         membar_producer();
