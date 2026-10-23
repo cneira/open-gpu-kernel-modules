@@ -610,7 +610,7 @@ nv_detach_gpu(dev_info_t *dip)
 
     rw_enter(&nv_illumos_devices_lock, RW_WRITER);
     sema_p(&nvis->ldata_lock);
-    if (nvis->usage_count != 0)
+    if (nvis->usage_count != 0 || nvis->console_open_count != 0)
     {
         sema_v(&nvis->ldata_lock);
         rw_exit(&nv_illumos_devices_lock);

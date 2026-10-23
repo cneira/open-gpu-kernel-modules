@@ -326,6 +326,7 @@ struct nv_illumos_state_s {
     /* serializes open/close/start/stop, like Linux's ldata_lock */
     ksema_t                 ldata_lock;
     volatile uint64_t       usage_count;
+    uint32_t                console_open_count; /* fallback clones; ldata_lock */
 
     /* per-GPU work queue */
     struct os_work_queue    queue;

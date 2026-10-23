@@ -268,7 +268,13 @@ nvidia_close_gpu(nv_illumos_file_private_t *nvifp)
     nvidia_stack_t *sp = nvifp->sp;
 
     if (nvifp->console_only)
+    {
+        sema_p(&nvis->ldata_lock);
+        ASSERT(nvis->console_open_count != 0);
+        nvis->console_open_count--;
+        sema_v(&nvis->ldata_lock);
         return;
+    }
 
     rm_cleanup_file_private(sp, nv, &nvifp->nvfp);
 
@@ -412,6 +418,7 @@ nvidia_open(dev_t *devp, int flag, int otyp, cred_t *credp)
                  * start.  No RM reference or open_files entry was made. */
                 nvifp->nvis = nvis;
                 nvifp->console_only = NV_TRUE;
+                nvis->console_open_count++;
                 rc = 0;
             }
             sema_v(&nvis->ldata_lock);
