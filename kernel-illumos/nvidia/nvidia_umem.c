@@ -64,6 +64,8 @@ typedef struct nv_user_pages_s {
 static void
 nv_umem_lock_cleanup(ddi_umem_cookie_t *cookie)
 {
+    nv_printf(NV_DBG_ERRORS, "NVRM: sno-jow callback cookie=%p pid=%d\n",
+        (void *)cookie, curproc->p_pid);
 }
 
 static struct umem_callback_ops nv_umem_callbacks = {
@@ -118,6 +120,11 @@ NV_STATUS NV_API_CALL os_lock_user_pages(
         return NV_ERR_INVALID_ADDRESS;
     }
 
+    nv_printf(NV_DBG_ERRORS,
+        "NVRM: sno-jow lock up=%p cookie=%p pid=%d addr=%p pages=%llu\n",
+        (void *)up, (void *)up->cookie, curproc->p_pid, (void *)addr,
+        (unsigned long long)page_count);
+
     pparray = ((struct ddi_umem_cookie *)up->cookie)->pparray;
 
     for (i = 0; i < page_count; i++)
@@ -150,6 +157,10 @@ NV_STATUS NV_API_CALL os_unlock_user_pages(
     if (up == NULL)
         return NV_ERR_INVALID_ARGUMENT;
 
+    nv_printf(NV_DBG_ERRORS,
+        "NVRM: sno-jow unlock up=%p cookie=%p pid=%d pages=%llu\n",
+        (void *)up, (void *)up->cookie, curproc->p_pid,
+        (unsigned long long)up->page_count);
     ddi_umem_unlock(up->cookie);
     kmem_free(up->phys, up->page_count * sizeof (NvU64));
     kmem_free(up, sizeof (*up));

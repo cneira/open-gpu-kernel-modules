@@ -184,6 +184,14 @@ static void RmCreateOsDescriptor(NVOS32_PARAMETERS *pApi, API_SECURITY_INFO secI
     pApi->status = pAllocApi->status;
     pApi->data.AllocOsDesc.hMemory = pAllocApi->data.AllocOsDesc.hMemory;
 
+    if (pPageArray != NULL)
+    {
+        nv_printf(NV_DBG_ERRORS,
+            "NVRM: sno-jow owner up=%p hRoot=0x%x hMemory=0x%x status=0x%x\n",
+            pPageArray, pApi->hRoot, pApi->data.AllocOsDesc.hMemory,
+            pAllocApi->status);
+    }
+
     if ((pAllocApi->status != NV_OK) &&
         (pAllocApi->data.AllocOsDesc.descriptor != NvP64_NULL))
     {

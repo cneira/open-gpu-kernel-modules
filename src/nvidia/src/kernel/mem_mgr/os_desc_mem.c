@@ -288,6 +288,11 @@ osdescDestruct_IMPL
     OBJGPU *pGpu = pMemory->pGpu;
     MEMORY_DESCRIPTOR *pMemDesc = pMemory->pMemDesc;
 
+    NV_PRINTF(LEVEL_ERROR,
+        "sno-jow osdesc up=%p memdesc=%p ref=%u dup=%u\n",
+        memdescGetMemData(pMemDesc), pMemDesc,
+        pMemDesc->RefCount, pMemDesc->DupCount);
+
     if (pMemDesc->DupCount == 1)
     {
         if (pMemDesc->RefCount > 1)

@@ -1196,6 +1196,10 @@ osDestroyOsDescriptorPageArray
 
     NV_ASSERT(pPrivate != NULL);
 
+    nv_printf(NV_DBG_ERRORS,
+        "NVRM: sno-jow destroy up=%p memdesc=%p ref=%u dup=%u\n",
+        pPrivate, pMemDesc, pMemDesc->RefCount, pMemDesc->DupCount);
+
     //
     // TODO: Bug 1811006: Notably skip any IOMMU mapping management as the
     // pMemDesc->pGpu might have been torn down already and the pGpu passed in
