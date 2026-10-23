@@ -767,6 +767,15 @@ memDestructCommon_IMPL
     if (!pMemory->bConstructed)
         return;
 
+    if (pResourceRef->externalClassId == NV01_MEMORY_SYSTEM_OS_DESCRIPTOR)
+    {
+        NV_PRINTF(LEVEL_ERROR,
+            "sno-jow free memdesc=%p wrapper=%p client=0x%x memory=0x%x ref=%u dup=%u\n",
+            pMemory->pMemDesc, memdescGetMemData(pMemory->pMemDesc),
+            pClient->hClient, hMemory, pMemory->pMemDesc->RefCount,
+            pMemory->pMemDesc->DupCount);
+    }
+
     _memUnregisterFromGsp(pMemory, pClient, hParent, hMemory);
 
     // Do device specific teardown if we have a device
@@ -1031,6 +1040,17 @@ memCopyConstruct_IMPL
     pMemoryDst->pMemDesc->DupCount++;
     if (pMemoryDst->pMemDesc->Allocated)
         pMemoryDst->pMemDesc->Allocated++;
+
+    if (pSrcRef->externalClassId == NV01_MEMORY_SYSTEM_OS_DESCRIPTOR)
+    {
+        NV_PRINTF(LEVEL_ERROR,
+            "sno-jow copy memdesc=%p wrapper=%p src_client=0x%x src_memory=0x%x dst_client=0x%x dst_memory=0x%x ref=%u dup=%u\n",
+            pMemoryDst->pMemDesc, memdescGetMemData(pMemoryDst->pMemDesc),
+            pSrcClient->hClient, pSrcRef->hResource,
+            pDstClient->hClient, pDstRef->hResource,
+            pMemoryDst->pMemDesc->RefCount,
+            pMemoryDst->pMemDesc->DupCount);
+    }
 
     // Insert pMemoryDst after pMemorySrc in circular list to track dup/sharing of pMemDesc
     pMemoryDst->dupListItem.pNext = pMemorySrc->dupListItem.pNext;

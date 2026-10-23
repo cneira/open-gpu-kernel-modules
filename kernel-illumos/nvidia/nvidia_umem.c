@@ -273,6 +273,10 @@ NV_STATUS NV_API_CALL nv_register_user_pages(
     at->import_priv = import_priv;
     *priv_data = at;
 
+    nv_printf(NV_DBG_ERRORS,
+        "NVRM: sno-jow register wrapper=%p up=%p cookie=%p pid=%d\n",
+        (void *)at, (void *)up, (void *)up->cookie, curproc->p_pid);
+
     return NV_OK;
 }
 
