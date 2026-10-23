@@ -234,13 +234,20 @@ nvidia_ioctl(dev_t dev, int cmd, intptr_t arg, int mode, cred_t *credp,
     {
         switch (cmd)
         {
-            case VIS_DEVINIT:
-            case VIS_GETIDENTIFIER:
             case VIS_CONSCLEAR:
             case VIS_CONSCOPY:
             case VIS_CONSDISPLAY:
             case VIS_CONSCURSOR:
             case KDSETMODE:
+                /* gfxp_fb trusts drawing coordinates and data pointers. */
+                if ((mode & FKIOCTL) == 0)
+                {
+                    nv_file_private_rele(nvifp);
+                    return (ENOTTY);
+                }
+                /* FALLTHROUGH */
+            case VIS_DEVINIT:
+            case VIS_GETIDENTIFIER:
             case KDGETMODE:
             case FBIOGATTR:
             case FBIOGTYPE:
