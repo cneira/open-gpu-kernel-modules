@@ -149,16 +149,19 @@ void *
 nv_pci_handle_for_dip(dev_info_t *dip)
 {
     nv_pci_handle_t *h;
+    nv_pci_handle_t *candidate;
     NvU8 bus, slot, func;
+    uint16_t bdf;
 
     if (nv_pci_dip_bdf(dip, &bus, &slot, &func) != DDI_SUCCESS)
         return (NULL);
+    bdf = PCI_GETBDF(bus, slot, func);
 
     mutex_enter(&nv_pci_handles_lock);
     for (h = list_head(&nv_pci_handles); h != NULL;
          h = list_next(&nv_pci_handles, h))
     {
-        if (h->dip == dip)
+        if (h->bdf == bdf && h->dip == dip && h->cfg != NULL)
         {
             mutex_exit(&nv_pci_handles_lock);
             return (h);
@@ -167,16 +170,52 @@ nv_pci_handle_for_dip(dev_info_t *dip)
     mutex_exit(&nv_pci_handles_lock);
 
     ndi_hold_devi(dip);
-    h = nv_pci_handle_create(dip, bus, slot, func);
-    if (h == NULL)
+    candidate = nv_pci_handle_create(dip, bus, slot, func);
+    if (candidate == NULL)
     {
         ndi_rele_devi(dip);
         return (NULL);
     }
 
     mutex_enter(&nv_pci_handles_lock);
-    list_insert_tail(&nv_pci_handles, h);
+    for (h = list_head(&nv_pci_handles); h != NULL;
+         h = list_next(&nv_pci_handles, h))
+    {
+        if (h->bdf == bdf)
+            break;
+    }
+    if (h == NULL)
+    {
+        list_insert_tail(&nv_pci_handles, candidate);
+        h = candidate;
+        candidate = NULL;
+    }
+    else if (h->vendor != candidate->vendor ||
+             h->device != candidate->device ||
+             (h->dip != NULL && h->dip != dip))
+    {
+        h = NULL;
+    }
+    else if (h->dip == NULL)
+    {
+        /* RM may already retain this BDF-only object.  Publish cfg first
+         * so readers that see dip can safely use both attached fields. */
+        h->cfg = candidate->cfg;
+        candidate->cfg = NULL;
+        membar_producer();
+        h->dip = candidate->dip;
+        candidate->dip = NULL;
+    }
     mutex_exit(&nv_pci_handles_lock);
+
+    if (candidate != NULL)
+    {
+        if (candidate->cfg != NULL)
+            pci_config_teardown(&candidate->cfg);
+        if (candidate->dip != NULL)
+            ndi_rele_devi(candidate->dip);
+        kmem_free(candidate, sizeof (*candidate));
+    }
 
     return (h);
 }
@@ -407,7 +446,10 @@ NV_STATUS NV_API_CALL os_enable_pci_req_atomics(void *handle,
     uint32_t comp_cap;
     uint16_t cap, devctl2;
 
-    if (h == NULL || h->dip == NULL || h->cfg == NULL)
+    if (h == NULL || h->dip == NULL)
+        return NV_ERR_NOT_SUPPORTED;
+    membar_consumer();
+    if (h->cfg == NULL)
         return NV_ERR_NOT_SUPPORTED;
 
     switch (type)
@@ -495,7 +537,10 @@ void NV_API_CALL os_pci_trigger_flr(void *handle)
     uint16_t cap, devctl;
     uint32_t devcap;
 
-    if (h == NULL || h->dip == NULL || h->cfg == NULL)
+    if (h == NULL || h->dip == NULL)
+        return;
+    membar_consumer();
+    if (h->cfg == NULL)
         return;
 
     nv_printf(NV_DBG_INFO, "NVRM: %s() Start to trigger FLR\n", __func__);
