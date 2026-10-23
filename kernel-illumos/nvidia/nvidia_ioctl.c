@@ -258,6 +258,22 @@ nvidia_ioctl(dev_t dev, int cmd, intptr_t arg, int mode, cred_t *credp,
         }
     }
 
+    if (nvifp->console_only)
+    {
+        /* Only the console ioctls above may use a clone without RM state.
+         * WAIT_OPEN_COMPLETE below reports the saved startup failure. */
+        if (NV_IOC_TYPE(ucmd) != NV_IOCTL_MAGIC ||
+            NV_IOC_DIR(ucmd) != NV_IOC_INOUT)
+            status = ENOTTY;
+        else if (NV_IOC_NR(ucmd) != NV_ESC_WAIT_OPEN_COMPLETE)
+            status = nvifp->open_rc;
+        if (status != 0)
+        {
+            nv_file_private_rele(nvifp);
+            return (status);
+        }
+    }
+
     if (NV_IOC_TYPE(ucmd) != NV_IOCTL_MAGIC || NV_IOC_DIR(ucmd) != NV_IOC_INOUT)
     {
         nv_file_private_rele(nvifp);

@@ -242,6 +242,7 @@ typedef struct nv_illumos_file_private_s {
     nv_illumos_state_t     *nvis;           /* NULL until the open succeeds */
     void                   *subsys_priv;    /* nvlink/nvswitch open state */
     NvBool                  closing;
+    NvBool                  console_only;   /* no RM open or usage reference */
     nvidia_stack_t         *sp;
     int                     open_rc;
     NV_STATUS               adapter_status;

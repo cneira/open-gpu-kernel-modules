@@ -267,6 +267,9 @@ nvidia_close_gpu(nv_illumos_file_private_t *nvifp)
     nv_state_t *nv = NV_STATE_PTR(nvis);
     nvidia_stack_t *sp = nvifp->sp;
 
+    if (nvifp->console_only)
+        return;
+
     rm_cleanup_file_private(sp, nv, &nvifp->nvfp);
 
     sema_p(&nvis->mmap_lock);
@@ -403,6 +406,14 @@ nvidia_open(dev_t *devp, int flag, int otyp, cred_t *credp)
 
                 nvifp->nvis = nvis;
             }
+            else if (nvis->console_fb != NULL)
+            {
+                /* The boot console needs this clone even if RM cannot
+                 * start.  No RM reference or open_files entry was made. */
+                nvifp->nvis = nvis;
+                nvifp->console_only = NV_TRUE;
+                rc = 0;
+            }
             sema_v(&nvis->ldata_lock);
             break;
 
@@ -486,6 +497,13 @@ nvidia_chpoll(dev_t dev, short events, int anyyet, short *reventsp,
     }
 
     if (nvifp->nvis == NULL)
+    {
+        *reventsp = POLLERR;
+        nv_file_private_rele(nvifp);
+        return (0);
+    }
+
+    if (nvifp->console_only)
     {
         *reventsp = POLLERR;
         nv_file_private_rele(nvifp);
@@ -626,6 +644,11 @@ nv_file_private_t* NV_API_CALL nv_get_file_private(
         goto done;
 
     nvifp = nv_file_private_hold(rdev);
+    if (nvifp != NULL && nvifp->console_only)
+    {
+        nv_file_private_rele(nvifp);
+        nvifp = NULL;
+    }
 
 done:
     releasef(fd);
@@ -656,7 +679,8 @@ nvidia_devmap(dev_t dev, devmap_cookie_t dhp, offset_t off, size_t len,
         return (ENXIO);
 
     /* Do not allow mmap on an fd into which RM objects have been exported. */
-    if ((nvifp->kind != NV_NODE_CTL && nvifp->kind != NV_NODE_GPU) ||
+    if (nvifp->console_only ||
+        (nvifp->kind != NV_NODE_CTL && nvifp->kind != NV_NODE_GPU) ||
         nvifp->nvfp.handles != NULL || nvifp->nvis == NULL)
     {
         nv_file_private_rele(nvifp);
@@ -700,6 +724,12 @@ nvidia_segmap(dev_t dev, off_t off, struct as *as, caddr_t *addrp, off_t len,
     nvifp = nv_file_private_hold(dev);
     if (nvifp == NULL)
         return (ENXIO);
+
+    if (nvifp->console_only)
+    {
+        nv_file_private_rele(nvifp);
+        return (EINVAL);
+    }
 
     rw_enter(&nvifp->file_va_lock, RW_READER);
     node = nvifp->file_mapping_list;
