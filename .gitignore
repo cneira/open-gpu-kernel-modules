@@ -4,3 +4,4 @@
 *.o.d
 _out/
 __pycache__/
+kernel-illumos/tests/console/scanout_range_test
