@@ -272,6 +272,9 @@ nvidia_close_gpu(nv_illumos_file_private_t *nvifp)
         sema_p(&nvis->ldata_lock);
         ASSERT(nvis->console_open_count != 0);
         nvis->console_open_count--;
+        nv_printf(NV_DBG_ERRORS,
+            "sno-wmy RM-failure: console-only close minor=%u count=%u\n",
+            nvis->minor_num, nvis->console_open_count);
         sema_v(&nvis->ldata_lock);
         return;
     }
@@ -419,6 +422,11 @@ nvidia_open(dev_t *devp, int flag, int otyp, cred_t *credp)
                 nvifp->nvis = nvis;
                 nvifp->console_only = NV_TRUE;
                 nvis->console_open_count++;
+                nv_printf(NV_DBG_ERRORS,
+                    "sno-wmy RM-failure: console-only open minor=%u "
+                    "open_rc=%d count=%u\n",
+                    nvis->minor_num, nvifp->open_rc,
+                    nvis->console_open_count);
                 rc = 0;
             }
             sema_v(&nvis->ldata_lock);

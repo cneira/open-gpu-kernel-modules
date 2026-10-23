@@ -220,6 +220,13 @@ nv_start_device(nv_state_t *nv, nvidia_stack_t *sp)
         return (ENXIO);
     }
 
+    /* Temporary sno-wmy fault injection.  Attach still publishes the GPU
+     * minor and console_fb, but each attempted RM start returns EIO. */
+    nv_printf(NV_DBG_ERRORS,
+        "sno-wmy RM-failure: forcing nv_start_device EIO for minor %u\n",
+        nvis->minor_num);
+    return (EIO);
+
     if (!(nv->flags & NV_FLAG_PERSISTENT_SW_STATE))
     {
         if (rm_ref_dynamic_power(sp, nv, NV_DYNAMIC_PM_COARSE) != NV_OK)
