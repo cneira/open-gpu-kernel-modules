@@ -290,6 +290,11 @@ nvidia_close_gpu(nv_illumos_file_private_t *nvifp)
 static void
 nv_file_private_destroy(nv_illumos_file_private_t *nvifp)
 {
+    nv_printf(NV_DBG_ERRORS,
+        "NVRM: sno-jow clone destroy nvfp=%p minor=0x%lx kind=%u pid=%d\n",
+        (void *)&nvifp->nvfp, (ulong_t)nvifp->minor,
+        (uint_t)nvifp->kind, curproc->p_pid);
+
     /* RM may still be posting events that reference this open instance. */
     while (nv_event_posting_refcount_read(&nvifp->nvfp) != 0)
         delay(1);
@@ -450,6 +455,10 @@ nvidia_open(dev_t *devp, int flag, int otyp, cred_t *credp)
     }
 
     *devp = makedevice(getmajor(*devp), nvifp->minor);
+    nv_printf(NV_DBG_ERRORS,
+        "NVRM: sno-jow clone open nvfp=%p minor=0x%lx kind=%u pid=%d\n",
+        (void *)&nvifp->nvfp, (ulong_t)nvifp->minor,
+        (uint_t)nvifp->kind, curproc->p_pid);
     return (0);
 }
 
@@ -471,6 +480,11 @@ nvidia_close(dev_t dev, int flag, int otyp, cred_t *credp)
     nvifp->closing = NV_TRUE;
     last = (--nvifp->refcnt == 0);
     mutex_exit(&nvifp->ref_lock);
+
+    nv_printf(NV_DBG_ERRORS,
+        "NVRM: sno-jow clone close nvfp=%p minor=0x%lx kind=%u pid=%d last=%u\n",
+        (void *)&nvifp->nvfp, (ulong_t)nvifp->minor,
+        (uint_t)nvifp->kind, curproc->p_pid, (uint_t)last);
 
     if (last)
         nv_file_private_destroy(nvifp);

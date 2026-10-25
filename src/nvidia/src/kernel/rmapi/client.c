@@ -1040,6 +1040,10 @@ _registerOSInfo
 
     osAllocatedRmClient(pOSInfo);
 
+    NV_PRINTF(LEVEL_ERROR,
+        "sno-jow client register client=0x%x osinfo=%p\n",
+        (NvU32)key2, pOSInfo);
+
     *pInsert = pClient;
 
     return NV_OK;
@@ -1065,6 +1069,10 @@ _unregisterOSInfo
      NvU64 key2 = (NvU64)(staticCast(pClient, RsClient))->hClient;
      OsInfoMapSubmap *pSubmap = NULL;
      RmClient **pFind = NULL;
+
+     NV_PRINTF(LEVEL_ERROR,
+         "sno-jow client unregister client=0x%x osinfo=%p\n",
+         (NvU32)key2, pOSInfo);
 
      pFind = multimapFindItem(&g_osInfoList, key1, key2);
      if (pFind != NULL)
