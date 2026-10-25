@@ -32,6 +32,7 @@
 #include "gpu/disp/disp_objs.h"
 #include "gpu/mem_mgr/mem_desc.h"
 #include "core/locks.h"
+#include "rmapi/client.h"
 #include "gpu/device/device.h"
 #include "gpu/subdevice/subdevice.h"
 #include "vgpu/rpc.h"
@@ -1043,11 +1044,16 @@ memCopyConstruct_IMPL
 
     if (pSrcRef->externalClassId == NV01_MEMORY_SYSTEM_OS_DESCRIPTOR)
     {
+        RmClient *pSrcRmClient = dynamicCast(pSrcClient, RmClient);
+        RmClient *pDstRmClient = dynamicCast(pDstClient, RmClient);
+
         NV_PRINTF(LEVEL_ERROR,
-            "sno-jow copy memdesc=%p wrapper=%p src_client=0x%x src_memory=0x%x dst_client=0x%x dst_memory=0x%x ref=%u dup=%u\n",
+            "sno-jow copy memdesc=%p wrapper=%p src_client=0x%x src_memory=0x%x src_osinfo=%p dst_client=0x%x dst_memory=0x%x dst_osinfo=%p ref=%u dup=%u\n",
             pMemoryDst->pMemDesc, memdescGetMemData(pMemoryDst->pMemDesc),
             pSrcClient->hClient, pSrcRef->hResource,
+            pSrcRmClient != NULL ? pSrcRmClient->pOSInfo : NULL,
             pDstClient->hClient, pDstRef->hResource,
+            pDstRmClient != NULL ? pDstRmClient->pOSInfo : NULL,
             pMemoryDst->pMemDesc->RefCount,
             pMemoryDst->pMemDesc->DupCount);
     }
