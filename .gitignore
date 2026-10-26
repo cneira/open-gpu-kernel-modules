@@ -5,3 +5,4 @@
 _out/
 __pycache__/
 kernel-illumos/tests/console/scanout_range_test
+kernel-illumos/tests/console/vis_user_ioctl_test
