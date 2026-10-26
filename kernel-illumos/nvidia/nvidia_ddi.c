@@ -32,11 +32,9 @@
  */
 
 #include "nv-illumos.h"
-#include "nv-console-range.h"
 #include "nv-reg.h"
 
 #include <sys/pci_cap.h>
-#include <sys/framebuffer.h>
 
 const NvBool nv_is_rm_firmware_supported_os = NV_TRUE;
 
@@ -317,25 +315,7 @@ nv_assign_minor(nv_illumos_state_t *nvis)
 static void
 nv_console_attach(nv_illumos_state_t *nvis)
 {
-    nv_state_t *nv = NV_STATE_PTR(nvis);
-    int in_fb, in_imem;
-
-    if (fb_info.fb_type != FB_TYPE_RGB &&
-        fb_info.fb_type != FB_TYPE_INDEXED)
-        return;
-    if (fb_info.paddr == 0 || fb_info.fb_size == 0 ||
-        fb_info.screen.y == 0 || fb_info.pitch == 0 ||
-        fb_info.pitch > fb_info.fb_size / fb_info.screen.y)
-        return;
-
-    in_fb = nv_console_range_fits(nv->bars[NV_GPU_BAR_INDEX_FB].cpu_address,
-        nv->bars[NV_GPU_BAR_INDEX_FB].size, fb_info.paddr, fb_info.fb_size,
-        0, 0);
-    in_imem = nv_console_range_fits(
-        nv->bars[NV_GPU_BAR_INDEX_IMEM].cpu_address,
-        nv->bars[NV_GPU_BAR_INDEX_IMEM].size, fb_info.paddr,
-        fb_info.fb_size, 0x1000000, 1);
-    if (!in_fb && !in_imem)
+    if (!nv_is_boot_console(NV_STATE_PTR(nvis)))
         return;
 
     nvis->console_fb = gfxp_fb_softc_alloc();

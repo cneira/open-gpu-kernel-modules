@@ -386,6 +386,9 @@ void nv_close_device(nv_state_t *, nvidia_stack_t *);
 int  nvidia_dev_get(NvU32 gpu_id, nvidia_stack_t *sp, NvBool reset_aware);
 void nvidia_dev_put(NvU32 gpu_id, nvidia_stack_t *sp, NvBool reset_aware);
 nv_illumos_state_t *nv_find_gpu_id_locked(NvU32 gpu_id);
+
+/* nvidia_misc.c */
+NvBool nv_is_boot_console(nv_state_t *);
 #define READ_ONCE(x)            (*(volatile __typeof__(x) *)&(x))
 #define WRITE_ONCE(x, v)        (*(volatile __typeof__(x) *)&(x) = (v))
 
