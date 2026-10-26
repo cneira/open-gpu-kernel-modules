@@ -412,10 +412,12 @@ nvidia_open(dev_t *devp, int flag, int otyp, cred_t *credp)
 
                 nvifp->nvis = nvis;
             }
-            else if (nvis->console_fb != NULL)
+            else if (nvis->console_fb != NULL && credp == kcred)
             {
-                /* The boot console needs this clone even if RM cannot
-                 * start.  No RM reference or open_files entry was made. */
+                /* The console opens /dev/fb with kcred and needs this clone
+                 * even if RM cannot start.  FKLYR would not do, since open(2)
+                 * lets userland set it.  No RM reference or open_files entry
+                 * was made. */
                 nvifp->nvis = nvis;
                 nvifp->console_only = NV_TRUE;
                 nvis->console_open_count++;
