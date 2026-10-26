@@ -315,19 +315,22 @@ nv_assign_minor(nv_illumos_state_t *nvis)
 static void
 nv_console_attach(nv_illumos_state_t *nvis)
 {
+    gfxp_fb_softc_ptr_t fb;
+
     if (!nv_is_boot_console(NV_STATE_PTR(nvis)))
         return;
 
-    nvis->console_fb = gfxp_fb_softc_alloc();
-    if (nvis->console_fb == NULL)
-        return;
-    if (gfxp_fb_attach(nvis->dip, DDI_ATTACH, nvis->console_fb) !=
-        DDI_SUCCESS)
+    /* The GPU is already openable, so publish the softc only once ready. */
+    fb = gfxp_fb_softc_alloc();
+    if (gfxp_fb_attach(nvis->dip, DDI_ATTACH, fb) != DDI_SUCCESS)
     {
-        gfxp_fb_softc_free(nvis->console_fb);
-        nvis->console_fb = NULL;
+        gfxp_fb_softc_free(fb);
         dev_err(nvis->dip, CE_WARN, "boot framebuffer console attach failed");
+        return;
     }
+
+    membar_producer();
+    nvis->console_fb = fb;
 }
 
 static void
