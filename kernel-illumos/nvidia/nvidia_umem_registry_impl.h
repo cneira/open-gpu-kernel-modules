@@ -14,6 +14,15 @@ typedef struct nv_umem_pin_state {
     unsigned int unlocked;
 } nv_umem_pin_state_t;
 
+/* RM stores the allocation wrapper, while os_lock_user_pages returns pin. */
+static inline int
+nv_umem_pin_matches(const void *pin, const void *alloc_private,
+    const void *candidate)
+{
+    return candidate != 0 &&
+        (candidate == pin || candidate == alloc_private);
+}
+
 static inline void
 nv_umem_pin_state_init(nv_umem_pin_state_t *pin)
 {

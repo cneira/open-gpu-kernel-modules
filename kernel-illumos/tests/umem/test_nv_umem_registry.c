@@ -147,6 +147,20 @@ test_unpublished_duplicate_checked_unwind(void)
     assert(nv_umem_pin_can_unlock(&pin));
 }
 
+static void
+test_rm_private_wrapper_identity(void)
+{
+    int pin;
+    int rm_private;
+    int unrelated;
+
+    assert(nv_umem_pin_matches(&pin, &rm_private, &pin));
+    assert(nv_umem_pin_matches(&pin, &rm_private, &rm_private));
+    assert(!nv_umem_pin_matches(&pin, &rm_private, &unrelated));
+    assert(!nv_umem_pin_matches(&pin, &rm_private, NULL));
+    assert(!nv_umem_pin_matches(&pin, NULL, &rm_private));
+}
+
 int
 main(void)
 {
@@ -156,6 +170,7 @@ main(void)
     test_hardware_complete_retains_guard_until_final_release();
     test_callback_and_guard_drop_interleave();
     test_unpublished_duplicate_checked_unwind();
-    puts("nv_umem registry state: 6 tests passed");
+    test_rm_private_wrapper_identity();
+    puts("nv_umem registry state: 7 tests passed");
     return 0;
 }

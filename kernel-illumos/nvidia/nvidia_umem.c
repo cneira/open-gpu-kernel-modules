@@ -58,6 +58,7 @@ typedef struct nv_user_pages_s {
     boolean_t            indexed;
     boolean_t            callback_seen;
     boolean_t            quarantined;
+    void                *alloc_private;
     void                *mem_desc;
     nv_umem_pin_state_t  state;
     ddi_umem_cookie_t   cookie;
@@ -193,6 +194,8 @@ os_umem_import_reserve(void *page_array, void *mem_desc, void **token_out)
     if (token_out == NULL)
         return NV_ERR_INVALID_ARGUMENT;
     *token_out = NULL;
+    if (page_array == NULL)
+        return NV_OK;
     token = kmem_zalloc(sizeof (*token), KM_NOSLEEP);
     if (token == NULL)
         return NV_ERR_NO_MEMORY;
@@ -200,7 +203,8 @@ os_umem_import_reserve(void *page_array, void *mem_desc, void **token_out)
     mutex_enter(&nv_umem_lock);
     for (up = list_head(&nv_umem_pins); up != NULL;
         up = list_next(&nv_umem_pins, up)) {
-        if (!up->pending && up == page_array)
+        if (!up->pending && nv_umem_pin_matches(up,
+            up->alloc_private, page_array))
             break;
     }
     if (up == NULL) {
@@ -839,6 +843,9 @@ NV_STATUS NV_API_CALL nv_register_user_pages(
 
     at->user_pages = up;
     at->import_priv = import_priv;
+    mutex_enter(&nv_umem_lock);
+    up->alloc_private = at;
+    mutex_exit(&nv_umem_lock);
     *priv_data = at;
 
     return NV_OK;
@@ -852,8 +859,13 @@ void NV_API_CALL nv_unregister_user_pages(
 )
 {
     nv_illumos_alloc_t *at = *priv_data;
+    nv_user_pages_t *up = at->user_pages;
 
-    *priv_data = at->user_pages;
+    mutex_enter(&nv_umem_lock);
+    if (up->alloc_private == at)
+        up->alloc_private = NULL;
+    mutex_exit(&nv_umem_lock);
+    *priv_data = up;
     if (import_priv != NULL)
         *import_priv = at->import_priv;
 
