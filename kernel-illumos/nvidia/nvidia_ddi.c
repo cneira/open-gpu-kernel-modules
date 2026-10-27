@@ -311,6 +311,39 @@ nv_assign_minor(nv_illumos_state_t *nvis)
     return (ENOSPC);
 }
 
+/* Only the GPU containing the bootloader's scanout may own /dev/fb. */
+static void
+nv_console_attach(nv_illumos_state_t *nvis)
+{
+    gfxp_fb_softc_ptr_t fb;
+
+    if (!nv_is_boot_console(NV_STATE_PTR(nvis)))
+        return;
+
+    /* The GPU is already openable, so publish the softc only once ready. */
+    fb = gfxp_fb_softc_alloc();
+    if (gfxp_fb_attach(nvis->dip, DDI_ATTACH, fb) != DDI_SUCCESS)
+    {
+        gfxp_fb_softc_free(fb);
+        dev_err(nvis->dip, CE_WARN, "boot framebuffer console attach failed");
+        return;
+    }
+
+    membar_producer();
+    nvis->console_fb = fb;
+}
+
+static void
+nv_console_detach(nv_illumos_state_t *nvis)
+{
+    if (nvis->console_fb == NULL)
+        return;
+
+    (void) gfxp_fb_detach(nvis->dip, DDI_DETACH, nvis->console_fb);
+    gfxp_fb_softc_free(nvis->console_fb);
+    nvis->console_fb = NULL;
+}
+
 static int
 nv_attach_gpu(dev_info_t *dip)
 {
@@ -509,6 +542,8 @@ nv_attach_gpu(dev_info_t *dip)
 
     rm_enable_dynamic_power_management(sp, nv);
 
+    nv_console_attach(nvis);
+
     if (nv->ats_support)
         WRITE_ONCE(nv_ats_supported, NV_TRUE);
     else
@@ -558,7 +593,7 @@ nv_detach_gpu(dev_info_t *dip)
 
     rw_enter(&nv_illumos_devices_lock, RW_WRITER);
     sema_p(&nvis->ldata_lock);
-    if (nvis->usage_count != 0)
+    if (nvis->usage_count != 0 || nvis->console_open_count != 0)
     {
         sema_v(&nvis->ldata_lock);
         rw_exit(&nv_illumos_devices_lock);
@@ -581,6 +616,8 @@ nv_detach_gpu(dev_info_t *dip)
     rm_check_for_gpu_surprise_removal(sp, nv);
 
     nv_stop_device(nv, sp);
+
+    nv_console_detach(nvis);
 
     rm_cleanup_dynamic_power_management(sp, nv);
 

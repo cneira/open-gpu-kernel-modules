@@ -1134,6 +1134,9 @@ static void deinit_procfs_dirs(uvm_gpu_t *gpu)
 
 static NV_STATUS init_procfs_files(uvm_gpu_t *gpu)
 {
+    if (!uvm_procfs_is_enabled())
+        return NV_OK;
+
     gpu->procfs.info_file = NV_CREATE_PROC_FILE("info", gpu->procfs.dir, gpu_info_entry, gpu);
     if (gpu->procfs.info_file == NULL)
         return NV_ERR_OPERATING_SYSTEM;

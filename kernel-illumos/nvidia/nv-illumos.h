@@ -50,6 +50,7 @@
 #include <sys/ddidevmap.h>
 #include <sys/pci.h>
 #include <sys/sunndi.h>
+#include <sys/gfx_private.h>
 
 /*
  * The NVIDIA headers below expect a freestanding environment and supply their
@@ -241,6 +242,7 @@ typedef struct nv_illumos_file_private_s {
     nv_illumos_state_t     *nvis;           /* NULL until the open succeeds */
     void                   *subsys_priv;    /* nvlink/nvswitch open state */
     NvBool                  closing;
+    NvBool                  console_only;   /* no RM open or usage reference */
     nvidia_stack_t         *sp;
     int                     open_rc;
     NV_STATUS               adapter_status;
@@ -297,6 +299,7 @@ struct nv_illumos_state_s {
     nv_state_t              nv_state;
 
     dev_info_t             *dip;
+    gfxp_fb_softc_ptr_t     console_fb;     /* boot framebuffer console */
     struct pci_dev          pci_dev;        /* handed to nvidia-uvm */
     int                     instance;
     NvU32                   minor_num;      /* index for /dev/nvidiaN */
@@ -323,6 +326,7 @@ struct nv_illumos_state_s {
     /* serializes open/close/start/stop, like Linux's ldata_lock */
     ksema_t                 ldata_lock;
     volatile uint64_t       usage_count;
+    uint32_t                console_open_count; /* fallback clones; ldata_lock */
 
     /* per-GPU work queue */
     struct os_work_queue    queue;
@@ -382,6 +386,9 @@ void nv_close_device(nv_state_t *, nvidia_stack_t *);
 int  nvidia_dev_get(NvU32 gpu_id, nvidia_stack_t *sp, NvBool reset_aware);
 void nvidia_dev_put(NvU32 gpu_id, nvidia_stack_t *sp, NvBool reset_aware);
 nv_illumos_state_t *nv_find_gpu_id_locked(NvU32 gpu_id);
+
+/* nvidia_misc.c */
+NvBool nv_is_boot_console(nv_state_t *);
 #define READ_ONCE(x)            (*(volatile __typeof__(x) *)&(x))
 #define WRITE_ONCE(x, v)        (*(volatile __typeof__(x) *)&(x) = (v))
 

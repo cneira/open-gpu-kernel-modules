@@ -26,6 +26,7 @@
  */
 
 #include "nv-illumos.h"
+#include "nv-console-range.h"
 
 #include <sys/sdt.h>
 #include <sys/smbios.h>
@@ -265,6 +266,31 @@ NvBool NV_API_CALL nv_is_chassis_notebook(void)
 }
 
 /*
+ * RM keeps a boot console working only when it starts at the FB BAR base or
+ * 16 MB into the IMEM BAR (RmSetConsolePreservationParams).
+ */
+NvBool
+nv_is_boot_console(nv_state_t *nv)
+{
+    if (fb_info.fb_type != FB_TYPE_RGB && fb_info.fb_type != FB_TYPE_INDEXED)
+        return NV_FALSE;
+
+    if (fb_info.paddr == 0 || fb_info.screen.y == 0 ||
+        fb_info.pitch == 0 || fb_info.fb_size == 0 ||
+        fb_info.pitch > fb_info.fb_size / fb_info.screen.y)
+        return NV_FALSE;
+
+    return (nv_console_range_fits(
+            nv->bars[NV_GPU_BAR_INDEX_FB].cpu_address,
+            nv->bars[NV_GPU_BAR_INDEX_FB].size, fb_info.paddr,
+            fb_info.fb_size, 0) ||
+        nv_console_range_fits(
+            nv->bars[NV_GPU_BAR_INDEX_IMEM].cpu_address,
+            nv->bars[NV_GPU_BAR_INDEX_IMEM].size, fb_info.paddr,
+            fb_info.fb_size, 0x1000000));
+}
+
+/*
  * Boot framebuffer (EFI GOP or VESA) that the console draws into, if it
  * lives in this GPU's BAR.
  */
@@ -282,10 +308,7 @@ void NV_API_CALL nv_get_screen_info(
     *pFbWidth = *pFbHeight = *pFbDepth = *pFbPitch = 0;
     *pFbSize = 0;
 
-    if (fb_info.fb_type != FB_TYPE_RGB && fb_info.fb_type != FB_TYPE_INDEXED)
-        return;
-
-    if (!NV_IS_CONSOLE_MAPPED(nv, fb_info.paddr))
+    if (!nv_is_boot_console(nv))
         return;
 
     *pPhysicalAddress = fb_info.paddr;

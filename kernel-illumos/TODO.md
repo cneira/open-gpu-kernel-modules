@@ -18,7 +18,10 @@ Everything here builds and links, but nothing has run on a GPU yet.
 
 - RM-pinned user memory (`cudaHostRegister`): a munmap of the range without
   unregistering it hangs uninterruptibly, because an illumos pagelock cannot
-  outlive its mapping and RM cannot revoke GPU access. The fix is
+  outlive its mapping and RM cannot revoke GPU access. Process exit hangs
+  the same way, because the device close waits for its mappings to go and
+  `as_free` runs the umem callbacks first; halting a zone with a running
+  NVENC or CUDA job leaves the zone stuck until the host reboots. The fix is
   RM-coordinated revocation from the umem cleanup callback, as hermon does.
   The alternative is to refuse these registrations.
 - CUDA user libraries exist only for Linux. Running them in LX zones needs
