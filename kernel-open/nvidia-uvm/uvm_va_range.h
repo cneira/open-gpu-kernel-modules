@@ -147,6 +147,10 @@ typedef struct
     // until the ref_count drops to 0.
     NvHandle rm_handle;
 
+    // A failed checked free may have partially changed RM state. Preserve
+    // the handle and prevent another attempt until ownership is resolved.
+    bool checked_release_failed;
+
     // Refcount for this handle/allocation. The refcount is used when external
     // ranges are split, resulting in two ranges using the same physical allocation.
     nv_kref_t ref_count;
@@ -206,6 +210,11 @@ typedef struct
     // complete, so subsequent operations on this ext_gpu_map must acquire this
     // tracker before operating on pt_range_vec.
     uvm_tracker_t tracker;
+
+    // Checked import revocation retries a failed page-tree drain without
+    // queueing the same PTE releases twice.
+    bool pt_release_queued;
+    bool pt_revoke_complete;
 
     // GPU which owns the allocation. For sysmem, this is the GPU that the
     // sysmem was originally allocated under. For the allocation to remain valid

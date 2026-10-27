@@ -591,6 +591,8 @@ static void uvm_release_rm_handle(struct nv_kref *ref)
     uvm_kvfree(mem_handle);
 }
 
+#include "uvm_map_external_handle_checked_impl.h"
+
 static NV_STATUS uvm_create_external_range(uvm_va_space_t *va_space, UVM_CREATE_EXTERNAL_RANGE_PARAMS *params)
 {
     uvm_va_range_external_t *external_range = NULL;
@@ -1245,6 +1247,8 @@ static uvm_gpu_t *uvm_ext_gpu_map_free_internal(uvm_ext_gpu_map_t *ext_gpu_map)
 
     return owning_gpu;
 }
+
+#include "uvm_map_external_revoke_impl.h"
 
 void uvm_ext_gpu_map_free(uvm_ext_gpu_map_t *ext_gpu_map)
 {
