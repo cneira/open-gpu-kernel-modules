@@ -8599,12 +8599,15 @@ static NV_STATUS dupMemory(struct gpuDevice *device,
 #if defined(NV_SUNOS)
     /*
      * The OS page-array memdesc retains the exact os_lock_user_pages()
-     * page_array in its private data. Reserve it while the source and
-     * destination RM clients are locked, before either an extra IOMMU
-     * mapping or the duplicated handle can become visible to UVM.
-     * Other OsDescMemory kinds are not in the pin registry and return NULL.
+     * page_array in its private data. Match that pointer in the pin registry
+     * while the source and destination RM clients are locked, before an IOMMU
+     * mapping or duplicate handle can become visible to UVM. The RM memory
+     * object need not have OsDescMemory as its dynamic class: NVENC's OS
+     * descriptor copies are exposed through a generic Memory wrapper.
+     * Other memdesc private pointers are absent from the registry and return
+     * a NULL token.
      */
-    if (ppImportToken != NULL && dynamicCast(pMemory, OsDescMemory) != NULL)
+    if (ppImportToken != NULL)
     {
         status = os_umem_import_reserve(memdescGetMemData(pMemDesc),
                                         pMemDesc, &importToken);
