@@ -1698,6 +1698,11 @@ static NV_STATUS check_gpu_va_space(uvm_gpu_va_space_t *gpu_va_space)
     if (va_space->disallow_new_registers)
         return NV_ERR_PAGE_TABLE_NOT_AVAIL;
 
+    // A callback may have permanently revoked the existing GPU VA spaces.
+    // Do not publish a new one after the revoke loop has taken its snapshot.
+    if (atomic_read(&va_space->user_channels_revoking))
+        return NV_ERR_INVALID_STATE;
+
     if (!va_space->pageable.cdmm_enabled) {
         // In NUMA mode, the new GPU VA space must have the same ATS setting as
         // previously registered GPU VA spaces

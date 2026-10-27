@@ -124,6 +124,17 @@ NV_STATUS NV_API_CALL rm_gpu_ops_address_space_destroy(nvidia_stack_t *sp,
     return NV_OK;
 }
 
+NV_STATUS NV_API_CALL rm_gpu_ops_revoke_address_space(nvidia_stack_t *sp,
+    gpuAddressSpaceHandle vaspace)
+{
+    NV_STATUS status;
+    void *fp;
+    NV_ENTER_RM_RUNTIME(sp,fp);
+    status = nvGpuOpsRevokeAddressSpace(vaspace);
+    NV_EXIT_RM_RUNTIME(sp,fp);
+    return status;
+}
+
 NV_STATUS  NV_API_CALL  rm_gpu_ops_memory_alloc_fb(
     nvidia_stack_t *sp, gpuAddressSpaceHandle vaspace,
     NvLength size, NvU64 *gpuOffset, gpuAllocInfo *allocInfo)

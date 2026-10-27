@@ -1009,6 +1009,11 @@ static NV_STATUS uvm_map_external_allocation(uvm_va_space_t *va_space, UVM_MAP_E
         return NV_ERR_NO_MEMORY;
 
     uvm_va_space_down_read_rm(va_space);
+    if (atomic_read(&va_space->user_channels_revoking)) {
+        uvm_va_space_up_read_rm(va_space);
+        uvm_processor_mask_cache_free(mapped_gpus);
+        return NV_ERR_INVALID_STATE;
+    }
     external_range = uvm_va_range_external_find(va_space, params->base);
 
     if (!external_range ||

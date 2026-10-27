@@ -27,6 +27,7 @@
 #include "kernel/gpu/fifo/kernel_channel_group.h"
 #include "kernel/gpu/fifo/kernel_fifo.h"
 #include "kernel/gpu/mem_mgr/mem_mgr.h"
+#include "kernel/mem_mgr/gpu_vaspace.h"
 #include "kernel/gpu/gr/kernel_graphics.h"
 #include "kernel/gpu/falcon/kernel_falcon.h"
 #include "kernel/gpu/rc/kernel_rc.h"
@@ -1254,7 +1255,10 @@ kchangrpapiCtrlCmdBind_IMPL
          pChanNode != NULL;
          pChanNode = pChanNode->pNext)
     {
+        OBJGVASPACE *pGVAS = dynamicCast(pChanNode->pKernelChannel->pVAS, OBJGVASPACE);
         if (portAtomicOrU32(&pChanNode->pKernelChannel->uvmRevoked, 0) != 0)
+            return NV_ERR_INVALID_STATE;
+        if (pGVAS != NULL && portAtomicOrU32(&pGVAS->uvmRevoked, 0) != 0)
             return NV_ERR_INVALID_STATE;
     }
 

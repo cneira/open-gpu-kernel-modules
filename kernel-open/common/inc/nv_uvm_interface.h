@@ -198,6 +198,7 @@ NV_STATUS nvUvmInterfaceDupAddressSpace(uvmGpuDeviceHandle device,
 */
 
 void nvUvmInterfaceAddressSpaceDestroy(uvmGpuAddressSpaceHandle vaSpace);
+NV_STATUS nvUvmInterfaceRevokeAddressSpace(uvmGpuAddressSpaceHandle vaSpace);
 
 /*******************************************************************************
     nvUvmInterfaceMemoryAllocFB

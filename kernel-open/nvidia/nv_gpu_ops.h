@@ -85,6 +85,7 @@ NV_STATUS nvGpuOpsGetP2PCaps(gpuDeviceHandle device1,
                              getP2PCapsParams *p2pCaps);
 
 void nvGpuOpsAddressSpaceDestroy(gpuAddressSpaceHandle vaSpace);
+NV_STATUS nvGpuOpsRevokeAddressSpace(gpuAddressSpaceHandle vaSpace);
 
 NV_STATUS nvGpuOpsMemoryAllocFb (gpuAddressSpaceHandle vaSpace,
     NvLength length, NvU64 *gpuOffset, gpuAllocInfo * allocInfo);

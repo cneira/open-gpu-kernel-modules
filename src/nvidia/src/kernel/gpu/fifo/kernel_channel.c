@@ -2131,6 +2131,9 @@ kchannelIsSchedulable_IMPL
 
     if (portAtomicOrU32(&pKernelChannel->uvmRevoked, 0) != 0)
         return NV_FALSE;
+    pGVAS = dynamicCast(pKernelChannel->pVAS, OBJGVASPACE);
+    if (pGVAS != NULL && portAtomicOrU32(&pGVAS->uvmRevoked, 0) != 0)
+        return NV_FALSE;
 
     gfId = kchannelGetGfid(pKernelChannel);
     if (IS_GFID_VF(gfId))
@@ -2140,8 +2143,6 @@ kchannelIsSchedulable_IMPL
             kchannelGetDebugTag(pKernelChannel));
         return NV_TRUE;
     }
-
-    pGVAS = dynamicCast(pKernelChannel->pVAS, OBJGVASPACE);
 
     //
     // It should be an error to have allocated and attempt to schedule a
@@ -2847,6 +2848,11 @@ NV_STATUS kchannelBindToRunlist_IMPL
     NV_ASSERT_OR_RETURN(pKernelChannel != NULL, NV_ERR_INVALID_ARGUMENT);
     if (portAtomicOrU32(&pKernelChannel->uvmRevoked, 0) != 0)
         return NV_ERR_INVALID_STATE;
+    {
+        OBJGVASPACE *pGVAS = dynamicCast(pKernelChannel->pVAS, OBJGVASPACE);
+        if (pGVAS != NULL && portAtomicOrU32(&pGVAS->uvmRevoked, 0) != 0)
+            return NV_ERR_INVALID_STATE;
+    }
     pGpu = GPU_RES_GET_GPU(pKernelChannel);
     pKernelFifo = GPU_GET_KERNEL_FIFO(pGpu);
 
@@ -3170,6 +3176,11 @@ kchannelCtrlCmdBind_IMPL
 
     if (portAtomicOrU32(&pKernelChannel->uvmRevoked, 0) != 0)
         return NV_ERR_INVALID_STATE;
+    {
+        OBJGVASPACE *pGVAS = dynamicCast(pKernelChannel->pVAS, OBJGVASPACE);
+        if (pGVAS != NULL && portAtomicOrU32(&pGVAS->uvmRevoked, 0) != 0)
+            return NV_ERR_INVALID_STATE;
+    }
 
     // Check if channel belongs to TSG that is not internal RM TSG
     if (!pKernelChannel->pKernelChannelGroupApi->pKernelChannelGroup->bAllocatedByRm)

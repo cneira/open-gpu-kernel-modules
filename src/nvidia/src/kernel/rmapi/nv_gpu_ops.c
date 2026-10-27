@@ -2810,6 +2810,48 @@ cleanup_vaspace:
     return status;
 }
 
+NV_STATUS nvGpuOpsRevokeAddressSpace(struct gpuAddressSpace *vaSpace)
+{
+    nvGpuOpsLockSet acquiredLocks;
+    THREAD_STATE_NODE threadState;
+    RsClient *pClient = NULL;
+    OBJVASPACE *pVAS = NULL;
+    OBJGVASPACE *pGVAS;
+    NV_STATUS status;
+
+    if (vaSpace == NULL || vaSpace->device == NULL)
+        return NV_ERR_INVALID_ARGUMENT;
+
+    threadStateInit(&threadState, THREAD_STATE_FLAGS_NONE);
+    status = _nvGpuOpsLocksAcquireAll(RMAPI_LOCK_FLAGS_READ,
+                                      vaSpace->device->session->handle,
+                                      &pClient, &acquiredLocks);
+    if (status != NV_OK)
+        goto done_thread;
+
+    status = vaspaceGetByHandleOrDeviceDefault(pClient,
+                                               vaSpace->device->handle,
+                                               vaSpace->handle,
+                                               &pVAS);
+    if (status != NV_OK)
+        goto done_lock;
+
+    pGVAS = dynamicCast(pVAS, OBJGVASPACE);
+    if (pGVAS == NULL || !gvaspaceIsExternallyOwned(pGVAS)) {
+        status = NV_ERR_INVALID_OBJECT;
+        goto done_lock;
+    }
+
+    /* Sticky across retries. New raw RM channels using this VAS cannot run. */
+    portAtomicOrU32(&pGVAS->uvmRevoked, 1);
+
+done_lock:
+    _nvGpuOpsLocksRelease(&acquiredLocks);
+done_thread:
+    threadStateFree(&threadState, THREAD_STATE_FLAGS_NONE);
+    return status;
+}
+
 // Get the NVLink connection status for the given device. On success, caller is
 // responsible of freeing the memory.
 static NV_STATUS allocNvlinkStatus(NvHandle hClient,
@@ -11151,6 +11193,15 @@ NV_STATUS nvGpuOpsBindChannelResources(gpuRetainedChannel *retainedChannel,
         _nvGpuOpsLocksRelease(&acquiredLocks);
         threadStateFree(&threadState, THREAD_STATE_FLAGS_NONE);
         return NV_ERR_INVALID_STATE;
+    }
+    {
+        OBJGVASPACE *pGVAS = dynamicCast(pKernelChannel->pVAS, OBJGVASPACE);
+        if (pGVAS != NULL && portAtomicOrU32(&pGVAS->uvmRevoked, 0) != 0)
+        {
+            _nvGpuOpsLocksRelease(&acquiredLocks);
+            threadStateFree(&threadState, THREAD_STATE_FLAGS_NONE);
+            return NV_ERR_INVALID_STATE;
+        }
     }
 
     // Unregister channel resources. CE channels have 0 resources, so they skip this step

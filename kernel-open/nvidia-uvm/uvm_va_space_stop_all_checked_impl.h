@@ -44,6 +44,15 @@ uvm_va_space_revoke_all_user_channels_checked(uvm_va_space_t *va_space)
     /* The ordinary stopped flag is insufficient: stopped channels can rebind. */
     atomic_set(&va_space->user_channels_revoking, 1);
     for_each_gpu_va_space(gpu_va_space, va_space) {
+        NV_STATUS va_status = uvm_rm_locked_call(
+            nvUvmInterfaceRevokeAddressSpace(gpu_va_space->duped_gpu_va_space));
+        if (status == NV_OK)
+            status = va_status;
+    }
+    if (status != NV_OK)
+        return status;
+
+    for_each_gpu_va_space(gpu_va_space, va_space) {
         list_for_each_entry(user_channel, &gpu_va_space->registered_channels, list_node) {
             NV_STATUS channel_status = uvm_user_channel_revoke_checked(user_channel);
             if (status == NV_OK)

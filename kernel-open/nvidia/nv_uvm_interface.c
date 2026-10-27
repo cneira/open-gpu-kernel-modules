@@ -336,6 +336,20 @@ void nvUvmInterfaceAddressSpaceDestroy(uvmGpuAddressSpaceHandle vaSpace)
 }
 EXPORT_SYMBOL(nvUvmInterfaceAddressSpaceDestroy);
 
+NV_STATUS nvUvmInterfaceRevokeAddressSpace(uvmGpuAddressSpaceHandle vaSpace)
+{
+    nvidia_stack_t *sp = NULL;
+    NV_STATUS status;
+
+    if (nv_kmem_cache_alloc_stack(&sp) != 0)
+        return NV_ERR_NO_MEMORY;
+
+    status = rm_gpu_ops_revoke_address_space(sp, (gpuAddressSpaceHandle)vaSpace);
+    nv_kmem_cache_free_stack(sp);
+    return status;
+}
+EXPORT_SYMBOL(nvUvmInterfaceRevokeAddressSpace);
+
 NV_STATUS nvUvmInterfaceMemoryAllocFB(uvmGpuAddressSpaceHandle vaSpace,
                     NvLength length, UvmGpuPointer * gpuPointer,
                     UvmGpuAllocInfo * allocInfo)
