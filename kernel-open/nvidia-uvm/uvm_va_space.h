@@ -561,6 +561,13 @@ bool uvm_va_space_single_gpu_in_parent(uvm_va_space_t *va_space, uvm_parent_gpu_
 // LOCKING: The VA space lock must be held in read mode, not write.
 void uvm_va_space_stop_all_user_channels(uvm_va_space_t *va_space);
 
+// Stop all user channels in non-immediate mode and report the first RM
+// failure. A failure leaves user_channels_stopped unset. A successful stop
+// alone does not prevent a user thread from requeueing a channel; the caller
+// must separately prevent new submissions and registrations.
+// LOCKING: The VA space lock must be held in read mode, not write.
+NV_STATUS uvm_va_space_stop_all_user_channels_checked(uvm_va_space_t *va_space);
+
 // Calls uvm_user_channel_detach on all user channels in a VA space.
 //
 // The detached channels are added to the input list. The caller is expected to

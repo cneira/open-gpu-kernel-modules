@@ -706,6 +706,8 @@ void uvm_va_space_stop_all_user_channels(uvm_va_space_t *va_space)
     atomic_set(&va_space->user_channels_stopped, 1);
 }
 
+#include "uvm_va_space_stop_all_checked_impl.h"
+
 uvm_gpu_t *uvm_va_space_get_gpu_by_uuid(uvm_va_space_t *va_space, const NvProcessorUuid *gpu_uuid)
 {
     uvm_gpu_t *gpu;
