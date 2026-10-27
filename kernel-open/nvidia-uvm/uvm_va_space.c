@@ -1512,21 +1512,16 @@ static NV_STATUS uvm_gpu_va_space_set_page_dir(uvm_gpu_va_space_t *gpu_va_space)
     return status;
 }
 
+#include "uvm_va_space_unset_checked_impl.h"
+
 void uvm_gpu_va_space_unset_page_dir(uvm_gpu_va_space_t *gpu_va_space)
 {
-    if (uvm_gpu_va_space_state(gpu_va_space) != UVM_GPU_VA_SPACE_STATE_INIT)
-        uvm_assert_rwsem_locked_read(&gpu_va_space->va_space->lock);
+    NV_STATUS status = uvm_gpu_va_space_unset_page_dir_checked(gpu_va_space);
 
-    if (gpu_va_space->did_set_page_directory) {
-        NV_STATUS status;
-
-        status = uvm_rm_locked_call(nvUvmInterfaceUnsetPageDirectory(gpu_va_space->duped_gpu_va_space));
-        UVM_ASSERT_MSG(status == NV_OK,
-                       "nvUvmInterfaceUnsetPageDirectory() failed: %s, GPU %s\n",
-                       nvstatusToString(status),
-                       uvm_gpu_name(gpu_va_space->gpu));
-        gpu_va_space->did_set_page_directory = false;
-    }
+    UVM_ASSERT_MSG(status == NV_OK,
+                   "nvUvmInterfaceUnsetPageDirectory() failed: %s, GPU %s\n",
+                   nvstatusToString(status),
+                   uvm_gpu_name(gpu_va_space->gpu));
 }
 
 static void destroy_gpu_va_space(uvm_gpu_va_space_t *gpu_va_space)

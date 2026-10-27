@@ -645,6 +645,7 @@ void uvm_gpu_va_space_release(uvm_gpu_va_space_t *gpu_va_space);
 
 // Wrapper for nvUvmInterfaceUnsetPageDirectory
 void uvm_gpu_va_space_unset_page_dir(uvm_gpu_va_space_t *gpu_va_space);
+NV_STATUS uvm_gpu_va_space_unset_page_dir_checked(uvm_gpu_va_space_t *gpu_va_space);
 
 static uvm_gpu_va_space_state_t uvm_gpu_va_space_state(uvm_gpu_va_space_t *gpu_va_space)
 {
