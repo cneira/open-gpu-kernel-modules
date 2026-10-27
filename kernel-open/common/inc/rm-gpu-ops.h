@@ -96,7 +96,7 @@ NV_STATUS  NV_API_CALL rm_gpu_ops_get_external_alloc_phys_addrs(nvidia_stack_t*,
 NV_STATUS  NV_API_CALL rm_gpu_ops_retain_channel(nvidia_stack_t *, nvgpuAddressSpaceHandle_t, NvHandle, NvHandle, void **, nvgpuChannelInstanceInfo_t);
 NV_STATUS  NV_API_CALL rm_gpu_ops_bind_channel_resources(nvidia_stack_t *, void *, nvgpuChannelResourceBindParams_t);
 void       NV_API_CALL rm_gpu_ops_release_channel(nvidia_stack_t *, void *);
-void       NV_API_CALL rm_gpu_ops_stop_channel(nvidia_stack_t *, void *, NvBool);
+NV_STATUS  NV_API_CALL rm_gpu_ops_stop_channel(nvidia_stack_t *, void *, NvBool);
 NV_STATUS  NV_API_CALL rm_gpu_ops_get_channel_resource_ptes(nvidia_stack_t *, nvgpuAddressSpaceHandle_t, NvP64, NvU64, NvU64, nvgpuExternalMappingInfo_t);
 NV_STATUS  NV_API_CALL rm_gpu_ops_report_non_replayable_fault(nvidia_stack_t *, nvgpuDeviceHandle_t, const void *);
 

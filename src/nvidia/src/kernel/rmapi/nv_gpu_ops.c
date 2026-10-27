@@ -11208,7 +11208,9 @@ NV_STATUS nvGpuOpsBindChannelResources(gpuRetainedChannel *retainedChannel,
 // the instance pointer may no longer be associated with a user object at this point.
 // If the instance pointer still has an associated channel, the channel is preempted and disabled.
 // Otherwise that must have already happened, so we just need to drop the ref counts on the resources
-void nvGpuOpsStopChannel(gpuRetainedChannel *retainedChannel,
+#include "nv_gpu_ops_stop_impl.h"
+
+NV_STATUS nvGpuOpsStopChannel(gpuRetainedChannel *retainedChannel,
                          NvBool bImmediate)
 {
     NV_STATUS status = NV_OK;
@@ -11217,17 +11219,17 @@ void nvGpuOpsStopChannel(gpuRetainedChannel *retainedChannel,
     KernelChannel *pKernelChannel = NULL;
     RsResourceRef *pResourceRef;
     RM_API *pRmApi = rmapiGetInterface(RMAPI_GPU_LOCK_INTERNAL);
-    NVA06F_CTRL_STOP_CHANNEL_PARAMS stopChannelParams = {0};
 
     threadStateInit(&threadState, THREAD_STATE_FLAGS_NONE);
 
-    if (_nvGpuOpsLocksAcquireAll(RMAPI_LOCK_FLAGS_READ,
-                                 retainedChannel->session->handle,
-                                 NULL,
-                                 &acquiredLocks) != NV_OK)
+    status = _nvGpuOpsLocksAcquireAll(RMAPI_LOCK_FLAGS_READ,
+                                      retainedChannel->session->handle,
+                                      NULL,
+                                      &acquiredLocks);
+    if (status != NV_OK)
     {
         threadStateFree(&threadState, THREAD_STATE_FLAGS_NONE);
-        return;
+        return status;
     }
 
     status = nvGpuOpsGetChannelData(retainedChannel, &pKernelChannel);
@@ -11235,7 +11237,7 @@ void nvGpuOpsStopChannel(gpuRetainedChannel *retainedChannel,
     {
         _nvGpuOpsLocksRelease(&acquiredLocks);
         threadStateFree(&threadState, THREAD_STATE_FLAGS_NONE);
-        return;
+        return status;
     }
 
     // Verify this channel handle is still valid
@@ -11245,41 +11247,15 @@ void nvGpuOpsStopChannel(gpuRetainedChannel *retainedChannel,
         NV_ASSERT(0);
         _nvGpuOpsLocksRelease(&acquiredLocks);
         threadStateFree(&threadState, THREAD_STATE_FLAGS_NONE);
-        return;
+        return status;
     }
 
-    stopChannelParams.bImmediate = bImmediate;
-    NV_ASSERT_OK(
-        pRmApi->Control(pRmApi,
-                        RES_GET_CLIENT_HANDLE(pKernelChannel),
-                        RES_GET_HANDLE(pKernelChannel),
-                        NVA06F_CTRL_CMD_STOP_CHANNEL,
-                        &stopChannelParams,
-                        sizeof(stopChannelParams)));
-
-    pKernelChannel->bIsContextBound = NV_FALSE;
-
-    if (retainedChannel->channelEngineType == UVM_GPU_CHANNEL_ENGINE_TYPE_GR)
-    {
-        NV2080_CTRL_GPU_EVICT_CTX_PARAMS params;
-
-        portMemSet(&params, 0, sizeof(params));
-        params.engineType = NV2080_ENGINE_TYPE_GR(0);
-        params.hClient = retainedChannel->session->handle;
-        params.hChanClient = RES_GET_CLIENT_HANDLE(pKernelChannel);
-        params.hObject = RES_GET_HANDLE(pKernelChannel);
-
-        NV_ASSERT_OK(
-            pRmApi->Control(pRmApi,
-                            retainedChannel->session->handle,
-                            retainedChannel->rmSubDevice->subDeviceHandle,
-                            NV2080_CTRL_CMD_GPU_EVICT_CTX,
-                            &params,
-                            sizeof(params)));
-    }
+    status = nvGpuOpsStopChannelControl(pRmApi, pKernelChannel,
+                                        retainedChannel, bImmediate);
 
     _nvGpuOpsLocksRelease(&acquiredLocks);
     threadStateFree(&threadState, THREAD_STATE_FLAGS_NONE);
+    return status;
 }
 
 // Make sure the UVM and PMA structs are in sync

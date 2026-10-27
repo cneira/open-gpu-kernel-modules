@@ -806,15 +806,17 @@ rm_gpu_ops_release_channel(nvidia_stack_t *sp, void *retainedChannel)
     NV_EXIT_RM_RUNTIME(sp, fp);
 }
 
-void NV_API_CALL
+NV_STATUS NV_API_CALL
 rm_gpu_ops_stop_channel(nvidia_stack_t * sp,
                         void *retainedChannel,
                         NvBool bImmediate)
 {
     void *fp;
+    NV_STATUS status;
     NV_ENTER_RM_RUNTIME(sp,fp);
-    nvGpuOpsStopChannel(retainedChannel, bImmediate);
+    status = nvGpuOpsStopChannel(retainedChannel, bImmediate);
     NV_EXIT_RM_RUNTIME(sp, fp);
+    return status;
 }
 
 NV_STATUS  NV_API_CALL

@@ -1363,7 +1363,7 @@ void nvUvmInterfaceReleaseChannel(void *retainedChannel);
         retainedChannel[IN]           - Channel pointer returned by nvUvmInterfaceRetainChannel
         bImmediate[IN]                - If true, kill the channel without attempting to wait for it to go idle.
 */
-void nvUvmInterfaceStopChannel(void *retainedChannel, NvBool bImmediate);
+NV_STATUS nvUvmInterfaceStopChannel(void *retainedChannel, NvBool bImmediate);
 
 /*******************************************************************************
     nvUvmInterfaceGetChannelResourcePtes

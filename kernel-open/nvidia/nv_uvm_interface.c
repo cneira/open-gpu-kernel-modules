@@ -1441,13 +1441,15 @@ void nvUvmInterfaceReleaseChannel(void *retainedChannel)
 }
 EXPORT_SYMBOL(nvUvmInterfaceReleaseChannel);
 
-void nvUvmInterfaceStopChannel(void *retainedChannel, NvBool bImmediate)
+NV_STATUS nvUvmInterfaceStopChannel(void *retainedChannel, NvBool bImmediate)
 {
     nvidia_stack_t *sp = nvUvmGetSafeStack();
+    NV_STATUS status;
 
-    rm_gpu_ops_stop_channel(sp, retainedChannel, bImmediate);
+    status = rm_gpu_ops_stop_channel(sp, retainedChannel, bImmediate);
 
     nvUvmFreeSafeStack(sp);
+    return status;
 }
 EXPORT_SYMBOL(nvUvmInterfaceStopChannel);
 

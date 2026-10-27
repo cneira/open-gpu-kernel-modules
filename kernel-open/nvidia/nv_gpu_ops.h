@@ -263,7 +263,7 @@ void nvGpuOpsReleaseChannel(gpuRetainedChannel *retainedChannel);
 NV_STATUS nvGpuOpsBindChannelResources(gpuRetainedChannel *retainedChannel,
                                        gpuChannelResourceBindParams *channelResourceBindParams);
 
-void nvGpuOpsStopChannel(gpuRetainedChannel *retainedChannel, NvBool bImmediate);
+NV_STATUS nvGpuOpsStopChannel(gpuRetainedChannel *retainedChannel, NvBool bImmediate);
 
 NV_STATUS nvGpuOpsGetChannelResourcePtes(struct gpuAddressSpace *vaSpace,
                                          NvP64 resourceDescriptor,

@@ -763,19 +763,21 @@ void uvm_user_channel_release(uvm_user_channel_t *user_channel)
         nv_kref_put(&user_channel->kref, free_user_channel);
 }
 
-void uvm_user_channel_stop(uvm_user_channel_t *user_channel)
+static NV_STATUS uvm_user_channel_stop_internal(uvm_user_channel_t *user_channel,
+                                                 NvBool bImmediate)
 {
     uvm_va_space_t *va_space = user_channel->gpu_va_space->va_space;
+    NV_STATUS status;
 
     if (!user_channel->rm_retained_channel)
-        return;
+        return NV_OK;
 
     // Skip if this channel was never bound, or if it's already been stopped.
     // Note that since we only hold the VA space lock in read mode here, two
     // threads could race and both call nvUvmInterfaceStopChannel concurrently.
     // RM handles that with internal locking, so it's not a problem.
     if (!atomic_read(&user_channel->is_bound))
-        return;
+        return NV_OK;
 
     // TODO: Bug 1799173: Normal lock tracking should handle this assert once
     //       all RM calls have been moved out from under the VA space lock in
@@ -785,12 +787,31 @@ void uvm_user_channel_stop(uvm_user_channel_t *user_channel)
     // TODO: Bug 1737765. This doesn't stop the user from putting the
     //       channel back on the runlist, which could put stale instance
     //       pointers back in the fault buffer.
-    uvm_rm_locked_call_void(nvUvmInterfaceStopChannel(user_channel->rm_retained_channel,
-                                                      va_space->user_channel_stops_are_immediate));
+    status = uvm_rm_locked_call(nvUvmInterfaceStopChannel(user_channel->rm_retained_channel,
+                                                          bImmediate));
+    if (status != NV_OK)
+        return status;
 
     // Multiple threads could perform this set concurrently, but is_bound never
     // transitions back to 1 after being set to 0 so that's not a problem.
     atomic_set(&user_channel->is_bound, 0);
+    return NV_OK;
+}
+
+NV_STATUS uvm_user_channel_stop_checked(uvm_user_channel_t *user_channel)
+{
+    return uvm_user_channel_stop_internal(user_channel, NV_FALSE);
+}
+
+void uvm_user_channel_stop(uvm_user_channel_t *user_channel)
+{
+    NV_STATUS status = uvm_user_channel_stop_internal(
+        user_channel,
+        user_channel->gpu_va_space->va_space->user_channel_stops_are_immediate);
+
+    if (status != NV_OK)
+        UVM_ERR_PRINT("Stopping user channel failed: %s\n",
+                      nvstatusToString(status));
 }
 
 void uvm_user_channel_detach(uvm_user_channel_t *user_channel, struct list_head *deferred_free_list)
