@@ -522,8 +522,12 @@ nv_umem_lock_cleanup(ddi_umem_cookie_t *arg)
             if (!token->hardware_complete)
                 break;
         }
-        if (token == NULL)
+        if (token == NULL) {
+            /* The final checked IOMMU unbind precedes guard release. */
+            while (!nv_umem_pin_can_unlock(&up->state))
+                cv_wait(&nv_umem_cv, &nv_umem_lock);
             break;
+        }
         if (!token->published || token->in_callback) {
             cv_wait(&nv_umem_cv, &nv_umem_lock);
             continue;
@@ -566,7 +570,7 @@ nv_umem_lock_cleanup(ddi_umem_cookie_t *arg)
              * the GPU might still reach the pin. Sleep until another owner
              * completes every import; a permanent failure retains the AS.
              */
-            while (up->state.imports != 0 || up->state.pending != 0)
+            while (!nv_umem_pin_can_unlock(&up->state))
                 cv_wait(&nv_umem_cv, &nv_umem_lock);
             mutex_exit(&nv_umem_lock);
             if (free_token)
