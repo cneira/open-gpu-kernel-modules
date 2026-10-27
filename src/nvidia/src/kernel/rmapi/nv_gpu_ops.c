@@ -121,6 +121,7 @@
 #include <kernel/gpu/nvlink/common_nvlink.h>
 #include <kernel/rmapi/mapping_list.h>
 #include <mem_mgr/fabric_vaspace.h>
+#include <kernel/mem_mgr/os_desc_mem.h>
 #include <mem_mgr/gpu_vaspace.h>
 #include <mem_mgr/vaspace.h>
 #include <mmu/gmmu_fmt.h>
@@ -9360,6 +9361,8 @@ NV_STATUS nvGpuOpsGetNvlinkInfo(struct gpuDevice *device, gpuNvlinkInfo *nvlinkI
 // call pRmApi->Free(pRmApi, ) that drops the GPU locks if acquired (and
 // re-acquires it later).
 //
+#include "nv_gpu_ops_iommu_impl.h"
+
 NV_STATUS nvGpuOpsFreeDupedHandle(struct gpuDevice *device,
                                   NvHandle hPhysHandle)
 {
@@ -9372,6 +9375,8 @@ NV_STATUS nvGpuOpsFreeDupedHandle(struct gpuDevice *device,
     RsClient *pClient;
     Subdevice *pSubdevice;
     NvHandle hClient;
+    NvBool bKeepHandle = NV_FALSE;
+    NV_STATUS freeStatus;
 
     if (!device)
         return NV_ERR_INVALID_ARGUMENT;
@@ -9400,18 +9405,25 @@ NV_STATUS nvGpuOpsFreeDupedHandle(struct gpuDevice *device,
     if (status != NV_OK)
         goto out;
 
-    if (memdescRequiresIommuMapping(pMemory->pMemDesc))
+    // Preserve the existing normal-release path. The checked mode is for
+    // callback-owned revocation once GPU mappings have been retired.
+    status = nvGpuOpsUnmapDupIommu(pMemory,
+                                  pMappingGpu->busInfo.iovaspaceId, NV_FALSE);
+    if (status != NV_OK)
     {
-        // Release the mappings acquired in nvGpuOpsDupMemory().
-        //
-        // TODO: Bug 1811060: Add native support for this use-case in RM API.
-        memdescUnmapIommu(pMemory->pMemDesc, pMappingGpu->busInfo.iovaspaceId);
+        bKeepHandle = NV_TRUE;
+        goto out;
     }
 
     _disablePeerAccess(device, memdescGetAddressSpace(pMemory->pMemDesc));
 
 out:
-    pRmApi->Free(pRmApi, device->session->handle, hPhysHandle);
+    if (!bKeepHandle)
+    {
+        freeStatus = pRmApi->Free(pRmApi, device->session->handle, hPhysHandle);
+        if (status == NV_OK)
+            status = freeStatus;
+    }
     _nvGpuOpsLocksRelease(&acquiredLocks);
     threadStateFree(&threadState, THREAD_STATE_FLAGS_NONE);
     return status;

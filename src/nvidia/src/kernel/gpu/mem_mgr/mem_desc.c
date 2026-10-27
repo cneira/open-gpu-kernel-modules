@@ -4400,6 +4400,30 @@ void memdescUnmapIommu
 #endif
 }
 
+NV_STATUS
+memdescUnmapIommuChecked(PMEMORY_DESCRIPTOR pMemDesc, NvU32 iovaspaceId)
+{
+#if (RMCFG_FEATURE_PLATFORM_UNIX || RMCFG_FEATURE_PLATFORM_MODS) && !NVCPU_IS_ARM
+    PIOVAMAPPING pIovaMapping;
+    OBJIOVASPACE *pIOVAS;
+
+    if (iovaspaceId == NV_IOVA_DOMAIN_NONE)
+        return NV_OK;
+
+    pIovaMapping = memdescGetIommuMap(pMemDesc, iovaspaceId);
+    if (pIovaMapping == NULL)
+        return NV_ERR_INVALID_STATE;
+
+    pIOVAS = iovaspaceFromMapping(pIovaMapping);
+    if (pIOVAS == NULL)
+        return NV_ERR_INVALID_STATE;
+
+    return iovaspaceReleaseMappingChecked(pIOVAS, pIovaMapping);
+#else
+    return NV_ERR_NOT_SUPPORTED;
+#endif
+}
+
 void memdescCheckSubDevicePageSizeConsistency
 (
     OBJGPU              *pGpu,
