@@ -41,3 +41,14 @@ nvGpuOpsStopChannelControl(RM_API *pRmApi, KernelChannel *pKernelChannel,
     pKernelChannel->bIsContextBound = NV_FALSE;
     return NV_OK;
 }
+
+/* A callback-owned stop must also prevent later binds and scheduling. */
+static NV_STATUS
+nvGpuOpsRevokeChannelControl(RM_API *pRmApi, KernelChannel *pKernelChannel,
+                             gpuRetainedChannel *retainedChannel)
+{
+    /* Mark before STOP so a failed stop cannot leave a reusable channel. */
+    portAtomicOrU32(&pKernelChannel->uvmRevoked, 1);
+    return nvGpuOpsStopChannelControl(pRmApi, pKernelChannel, retainedChannel,
+                                      NV_FALSE);
+}

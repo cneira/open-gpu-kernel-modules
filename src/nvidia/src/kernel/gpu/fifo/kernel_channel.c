@@ -206,6 +206,7 @@ kchannelConstruct_IMPL
 
     pKernelChannel->refCount = 1;
     pKernelChannel->bIsContextBound = NV_FALSE;
+    pKernelChannel->uvmRevoked = 0;
     pKernelChannel->nextObjectClassID = 0;
     pKernelChannel->subctxId = 0;
     pKernelChannel->vaSpaceId = 0;
@@ -2128,6 +2129,9 @@ kchannelIsSchedulable_IMPL
     NvU32        engineDesc = 0;
     NvU32        gfId;
 
+    if (portAtomicOrU32(&pKernelChannel->uvmRevoked, 0) != 0)
+        return NV_FALSE;
+
     gfId = kchannelGetGfid(pKernelChannel);
     if (IS_GFID_VF(gfId))
     {
@@ -2841,6 +2845,8 @@ NV_STATUS kchannelBindToRunlist_IMPL
     NV_STATUS status = NV_OK;
 
     NV_ASSERT_OR_RETURN(pKernelChannel != NULL, NV_ERR_INVALID_ARGUMENT);
+    if (portAtomicOrU32(&pKernelChannel->uvmRevoked, 0) != 0)
+        return NV_ERR_INVALID_STATE;
     pGpu = GPU_RES_GET_GPU(pKernelChannel);
     pKernelFifo = GPU_GET_KERNEL_FIFO(pGpu);
 
@@ -3161,6 +3167,9 @@ kchannelCtrlCmdBind_IMPL
 
     if (!pParams)
         return NV_ERR_INVALID_ARGUMENT;
+
+    if (portAtomicOrU32(&pKernelChannel->uvmRevoked, 0) != 0)
+        return NV_ERR_INVALID_STATE;
 
     // Check if channel belongs to TSG that is not internal RM TSG
     if (!pKernelChannel->pKernelChannelGroupApi->pKernelChannelGroup->bAllocatedByRm)

@@ -31,3 +31,29 @@ uvm_va_space_stop_all_user_channels_checked(uvm_va_space_t *va_space)
 {
     return uvm_va_space_stop_all_user_channels_status(va_space, false);
 }
+
+NV_STATUS
+uvm_va_space_revoke_all_user_channels_checked(uvm_va_space_t *va_space)
+{
+    uvm_gpu_va_space_t *gpu_va_space;
+    uvm_user_channel_t *user_channel;
+    NV_STATUS status = NV_OK;
+
+    uvm_assert_rwsem_locked_read(&va_space->lock);
+
+    /* The ordinary stopped flag is insufficient: stopped channels can rebind. */
+    atomic_set(&va_space->user_channels_revoking, 1);
+    for_each_gpu_va_space(gpu_va_space, va_space) {
+        list_for_each_entry(user_channel, &gpu_va_space->registered_channels, list_node) {
+            NV_STATUS channel_status = uvm_user_channel_revoke_checked(user_channel);
+            if (status == NV_OK)
+                status = channel_status;
+        }
+    }
+
+    if (status == NV_OK) {
+        atomic_set(&va_space->user_channels_stopped, 1);
+        atomic_set(&va_space->user_channels_revoked, 1);
+    }
+    return status;
+}

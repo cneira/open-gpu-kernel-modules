@@ -1453,6 +1453,18 @@ NV_STATUS nvUvmInterfaceStopChannel(void *retainedChannel, NvBool bImmediate)
 }
 EXPORT_SYMBOL(nvUvmInterfaceStopChannel);
 
+NV_STATUS nvUvmInterfaceRevokeChannel(void *retainedChannel)
+{
+    nvidia_stack_t *sp = nvUvmGetSafeStack();
+    NV_STATUS status;
+
+    status = rm_gpu_ops_revoke_channel(sp, retainedChannel);
+
+    nvUvmFreeSafeStack(sp);
+    return status;
+}
+EXPORT_SYMBOL(nvUvmInterfaceRevokeChannel);
+
 NV_STATUS nvUvmInterfaceGetChannelResourcePtes(uvmGpuAddressSpaceHandle vaSpace,
                                                NvP64 resourceDescriptor,
                                                NvU64 offset,

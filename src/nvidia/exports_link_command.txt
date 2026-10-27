@@ -113,6 +113,7 @@
 --undefined=rm_gpu_ops_set_page_directory
 --undefined=rm_gpu_ops_unset_page_directory
 --undefined=rm_gpu_ops_stop_channel
+--undefined=rm_gpu_ops_revoke_channel
 --undefined=rm_gpu_ops_get_nvlink_info
 --undefined=rm_gpu_ops_p2p_object_create
 --undefined=rm_gpu_ops_p2p_object_destroy

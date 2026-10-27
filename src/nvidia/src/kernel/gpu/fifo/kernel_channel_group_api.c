@@ -1249,6 +1249,15 @@ kchangrpapiCtrlCmdBind_IMPL
 
     NV_ASSERT_OR_RETURN(pParams != NULL, NV_ERR_INVALID_ARGUMENT);
 
+    /* Reject the entire group before binding any of its channels. */
+    for (pChanNode = pKernelChannelGroupApi->pKernelChannelGroup->pChanList->pHead;
+         pChanNode != NULL;
+         pChanNode = pChanNode->pNext)
+    {
+        if (portAtomicOrU32(&pChanNode->pKernelChannel->uvmRevoked, 0) != 0)
+            return NV_ERR_INVALID_STATE;
+    }
+
     localEngineType = globalEngineType = gpuGetRmEngineType(pParams->engineType);
 
     if (bMIGInUse)

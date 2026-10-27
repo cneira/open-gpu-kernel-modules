@@ -554,7 +554,8 @@ static NV_STATUS uvm_register_channel_under_write(struct mm_struct *mm,
     // UVM_INIT_FLAGS_MULTI_PROCESS_SHARING_MODE, but the VA space could be
     // shared and some other process could still try registering a channel.
     // Just disallow it for now.
-    if (atomic_read(&va_space->user_channels_stopped))
+    if (atomic_read(&va_space->user_channels_stopped) ||
+        atomic_read(&va_space->user_channels_revoking))
         return NV_ERR_INVALID_STATE;
 
     // If the VA space's mm has been torn down we can't allow more work. mm
@@ -806,6 +807,23 @@ NV_STATUS uvm_user_channel_stop_checked(uvm_user_channel_t *user_channel)
 NV_STATUS uvm_user_channel_stop_mode_checked(uvm_user_channel_t *user_channel, bool immediate)
 {
     return uvm_user_channel_stop_internal(user_channel, immediate);
+}
+
+NV_STATUS uvm_user_channel_revoke_checked(uvm_user_channel_t *user_channel)
+{
+    uvm_va_space_t *va_space = user_channel->gpu_va_space->va_space;
+    NV_STATUS status;
+
+    if (!user_channel->rm_retained_channel)
+        return NV_OK;
+
+    uvm_assert_rwsem_locked_read(&va_space->lock);
+
+    /* Revoke even if an ordinary stop already cleared is_bound. */
+    status = uvm_rm_locked_call(nvUvmInterfaceRevokeChannel(user_channel->rm_retained_channel));
+    if (status == NV_OK)
+        atomic_set(&user_channel->is_bound, 0);
+    return status;
 }
 
 void uvm_user_channel_stop(uvm_user_channel_t *user_channel)

@@ -1365,6 +1365,9 @@ void nvUvmInterfaceReleaseChannel(void *retainedChannel);
 */
 NV_STATUS nvUvmInterfaceStopChannel(void *retainedChannel, NvBool bImmediate);
 
+/* Permanently rejects RM bind/schedule on a UVM-owned retained channel. */
+NV_STATUS nvUvmInterfaceRevokeChannel(void *retainedChannel);
+
 /*******************************************************************************
     nvUvmInterfaceGetChannelResourcePtes
 

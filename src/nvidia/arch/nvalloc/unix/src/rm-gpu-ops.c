@@ -819,6 +819,17 @@ rm_gpu_ops_stop_channel(nvidia_stack_t * sp,
     return status;
 }
 
+NV_STATUS NV_API_CALL
+rm_gpu_ops_revoke_channel(nvidia_stack_t *sp, void *retainedChannel)
+{
+    void *fp;
+    NV_STATUS status;
+    NV_ENTER_RM_RUNTIME(sp, fp);
+    status = nvGpuOpsRevokeChannel(retainedChannel);
+    NV_EXIT_RM_RUNTIME(sp, fp);
+    return status;
+}
+
 NV_STATUS  NV_API_CALL
 rm_gpu_ops_get_channel_resource_ptes(nvidia_stack_t* sp,
                                      nvgpuAddressSpaceHandle_t vaSpace,

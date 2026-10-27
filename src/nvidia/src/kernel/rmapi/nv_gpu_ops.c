@@ -11146,6 +11146,13 @@ NV_STATUS nvGpuOpsBindChannelResources(gpuRetainedChannel *retainedChannel,
         return status;
     }
 
+    if (portAtomicOrU32(&pKernelChannel->uvmRevoked, 0) != 0)
+    {
+        _nvGpuOpsLocksRelease(&acquiredLocks);
+        threadStateFree(&threadState, THREAD_STATE_FLAGS_NONE);
+        return NV_ERR_INVALID_STATE;
+    }
+
     // Unregister channel resources. CE channels have 0 resources, so they skip this step
     if (retainedChannel->resourceCount != 0)
     {
@@ -11210,8 +11217,8 @@ NV_STATUS nvGpuOpsBindChannelResources(gpuRetainedChannel *retainedChannel,
 // Otherwise that must have already happened, so we just need to drop the ref counts on the resources
 #include "nv_gpu_ops_stop_impl.h"
 
-NV_STATUS nvGpuOpsStopChannel(gpuRetainedChannel *retainedChannel,
-                         NvBool bImmediate)
+static NV_STATUS nvGpuOpsStopChannelInternal(gpuRetainedChannel *retainedChannel,
+                                              NvBool bImmediate, NvBool bRevoke)
 {
     NV_STATUS status = NV_OK;
     nvGpuOpsLockSet acquiredLocks;
@@ -11250,12 +11257,25 @@ NV_STATUS nvGpuOpsStopChannel(gpuRetainedChannel *retainedChannel,
         return status;
     }
 
-    status = nvGpuOpsStopChannelControl(pRmApi, pKernelChannel,
-                                        retainedChannel, bImmediate);
+    status = bRevoke ?
+        nvGpuOpsRevokeChannelControl(pRmApi, pKernelChannel, retainedChannel) :
+        nvGpuOpsStopChannelControl(pRmApi, pKernelChannel,
+                                   retainedChannel, bImmediate);
 
     _nvGpuOpsLocksRelease(&acquiredLocks);
     threadStateFree(&threadState, THREAD_STATE_FLAGS_NONE);
     return status;
+}
+
+NV_STATUS nvGpuOpsStopChannel(gpuRetainedChannel *retainedChannel,
+                              NvBool bImmediate)
+{
+    return nvGpuOpsStopChannelInternal(retainedChannel, bImmediate, NV_FALSE);
+}
+
+NV_STATUS nvGpuOpsRevokeChannel(gpuRetainedChannel *retainedChannel)
+{
+    return nvGpuOpsStopChannelInternal(retainedChannel, NV_FALSE, NV_TRUE);
 }
 
 // Make sure the UVM and PMA structs are in sync

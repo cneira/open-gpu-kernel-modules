@@ -22,6 +22,7 @@ typedef struct {
 } gpuRetainedChannel;
 typedef struct {
     NvBool bIsContextBound;
+    volatile NvU32 uvmRevoked;
     NvU32 client;
     NvU32 handle;
 } KernelChannel;
@@ -47,6 +48,16 @@ static NV_STATUS evict_status;
 static int stop_count;
 static int evict_count;
 static NvBool seen_immediate;
+static KernelChannel *controlled_channel;
+static NvBool revoked_before_stop;
+
+static NvU32
+portAtomicOrU32(volatile NvU32 *value, NvU32 mask)
+{
+    NvU32 previous = *value;
+    *value |= mask;
+    return previous;
+}
 
 static NV_STATUS
 control(RM_API *api, NvU32 client, NvU32 handle, NvU32 command,
@@ -56,6 +67,7 @@ control(RM_API *api, NvU32 client, NvU32 handle, NvU32 command,
     (void)client;
     (void)handle;
     if (command == NVA06F_CTRL_CMD_STOP_CHANNEL) {
+        revoked_before_stop = controlled_channel->uvmRevoked != 0;
         assert(size == sizeof (NVA06F_CTRL_STOP_CHANNEL_PARAMS));
         seen_immediate = ((NVA06F_CTRL_STOP_CHANNEL_PARAMS *)params)->bImmediate;
         stop_count++;
@@ -85,6 +97,7 @@ main(void)
         .client = 3,
         .handle = 4,
     };
+    controlled_channel = &channel;
 
     stop_status = NV_ERR_OPERATING_SYSTEM;
     assert(nvGpuOpsStopChannelControl(&api, &channel, &retained,
@@ -111,5 +124,33 @@ main(void)
                                       NV_FALSE) == NV_OK);
     assert(channel.bIsContextBound == NV_FALSE);
     assert(stop_count == 4 && evict_count == 2);
+
+    /* Revocation must precede RM stop, including on failure. */
+    channel.bIsContextBound = NV_TRUE;
+    retained.channelEngineType = UVM_GPU_CHANNEL_ENGINE_TYPE_GR;
+    stop_status = NV_ERR_OPERATING_SYSTEM;
+    assert(nvGpuOpsRevokeChannelControl(&api, &channel, &retained)
+           == NV_ERR_OPERATING_SYSTEM);
+    assert(revoked_before_stop == NV_TRUE);
+    assert(channel.uvmRevoked != 0);
+    assert(channel.bIsContextBound == NV_TRUE);
+
+    stop_status = NV_OK;
+    evict_status = NV_ERR_OPERATING_SYSTEM;
+    assert(nvGpuOpsRevokeChannelControl(&api, &channel, &retained)
+           == NV_ERR_OPERATING_SYSTEM);
+    assert(channel.uvmRevoked != 0);
+    assert(channel.bIsContextBound == NV_TRUE);
+
+    evict_status = NV_OK;
+    assert(nvGpuOpsRevokeChannelControl(&api, &channel, &retained) == NV_OK);
+    assert(channel.bIsContextBound == NV_FALSE);
+
+    /* Ordinary UVM stop does not revoke a reusable channel. */
+    channel.uvmRevoked = 0;
+    channel.bIsContextBound = NV_TRUE;
+    assert(nvGpuOpsStopChannelControl(&api, &channel, &retained,
+                                      NV_FALSE) == NV_OK);
+    assert(channel.uvmRevoked == 0);
     return 0;
 }

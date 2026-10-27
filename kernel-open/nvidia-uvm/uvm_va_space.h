@@ -358,6 +358,10 @@ struct uvm_va_space_struct
     // is an atomic_t because multiple threads may call
     // uvm_va_space_stop_all_user_channels concurrently.
     atomic_t user_channels_stopped;
+    /* Set before callback-side revocation; never cleared for this VA space. */
+    atomic_t user_channels_revoking;
+    /* Set only after every registered channel passes checked RM revocation. */
+    atomic_t user_channels_revoked;
 
     // Prevent future registrations of any kind (GPU, GPU VA space, channel).
     // This is used when the associated va_space_mm is torn down, which has to
@@ -567,6 +571,7 @@ void uvm_va_space_stop_all_user_channels(uvm_va_space_t *va_space);
 // must separately prevent new submissions and registrations.
 // LOCKING: The VA space lock must be held in read mode, not write.
 NV_STATUS uvm_va_space_stop_all_user_channels_checked(uvm_va_space_t *va_space);
+NV_STATUS uvm_va_space_revoke_all_user_channels_checked(uvm_va_space_t *va_space);
 
 // Calls uvm_user_channel_detach on all user channels in a VA space.
 //

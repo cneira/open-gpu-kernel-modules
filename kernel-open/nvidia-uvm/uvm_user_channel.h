@@ -258,6 +258,7 @@ void uvm_user_channel_release(uvm_user_channel_t *user_channel);
 void uvm_user_channel_stop(uvm_user_channel_t *user_channel);
 NV_STATUS uvm_user_channel_stop_checked(uvm_user_channel_t *user_channel);
 NV_STATUS uvm_user_channel_stop_mode_checked(uvm_user_channel_t *user_channel, bool immediate);
+NV_STATUS uvm_user_channel_revoke_checked(uvm_user_channel_t *user_channel);
 
 // Second phase of user channel destroy which detaches the channel from the
 // parent gpu_va_space and adds it to the list of pending objects to be freed.

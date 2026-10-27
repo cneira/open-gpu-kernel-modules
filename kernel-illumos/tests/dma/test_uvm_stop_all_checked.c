@@ -11,6 +11,8 @@ typedef struct {
     int stop_result;
     int stop_calls;
     bool last_immediate;
+    int revoke_result;
+    int revoke_calls;
 } uvm_user_channel_t;
 
 typedef struct {
@@ -24,6 +26,8 @@ typedef struct {
     uvm_gpu_va_space_t *gpus;
     int gpu_count;
     int user_channels_stopped;
+    int user_channels_revoking;
+    int user_channels_revoked;
     int lock;
 } uvm_va_space_t;
 
@@ -44,6 +48,12 @@ uvm_user_channel_stop_mode_checked(uvm_user_channel_t *channel, bool immediate)
     channel->last_immediate = immediate;
     return channel->stop_result;
 }
+static NV_STATUS
+uvm_user_channel_revoke_checked(uvm_user_channel_t *channel)
+{
+    channel->revoke_calls++;
+    return channel->revoke_result;
+}
 
 #include "../../../kernel-open/nvidia-uvm/uvm_va_space_stop_all_checked_impl.h"
 
@@ -51,10 +61,12 @@ int
 main(void)
 {
     uvm_user_channel_t channels[] = {
-        {0, 0, false}, {NV_ERR_OPERATING_SYSTEM, 0, false}, {0, 0, false}
+        {.stop_result = NV_OK},
+        {.stop_result = NV_ERR_OPERATING_SYSTEM},
+        {.stop_result = NV_OK}
     };
     uvm_gpu_va_space_t gpu = {{channels, 3}};
-    uvm_va_space_t va = {&gpu, 1, 0, 0};
+    uvm_va_space_t va = {.gpus = &gpu, .gpu_count = 1};
 
     assert(uvm_va_space_stop_all_user_channels_checked(&va) ==
            NV_ERR_OPERATING_SYSTEM);
@@ -80,5 +92,21 @@ main(void)
            NV_ERR_OPERATING_SYSTEM);
     assert(va.user_channels_stopped == 0);
     assert(channels[0].last_immediate && channels[1].last_immediate);
+
+    /* A prior ordinary stop does not certify permanent revocation. */
+    va.user_channels_stopped = 0;
+    channels[1].revoke_result = NV_ERR_OPERATING_SYSTEM;
+    assert(uvm_va_space_revoke_all_user_channels_checked(&va) ==
+           NV_ERR_OPERATING_SYSTEM);
+    assert(channels[0].revoke_calls == 1);
+    assert(channels[1].revoke_calls == 1);
+    assert(channels[2].revoke_calls == 1);
+    assert(va.user_channels_revoking == 1);
+    assert(va.user_channels_stopped == 0);
+    assert(va.user_channels_revoked == 0);
+    channels[1].revoke_result = NV_OK;
+    assert(uvm_va_space_revoke_all_user_channels_checked(&va) == NV_OK);
+    assert(channels[0].revoke_calls == 2);
+    assert(va.user_channels_revoked == 1);
     return 0;
 }
