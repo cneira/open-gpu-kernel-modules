@@ -147,6 +147,13 @@ void uvm_ext_gpu_map_destroy(uvm_va_range_external_t *external_range,
                              uvm_ext_gpu_map_t *ext_gpu_map,
                              struct list_head *deferred_free_list);
 
+// Revokes one map fragment and releases its RM duplicate only after the last
+// fragment is gone. On a failed GPU or RM barrier, the map remains in the tree.
+// The caller must hold the VA-space read lock and the GPU range-tree mutex,
+// prevent new submissions, and hold the RM descriptor guard through teardown.
+NV_STATUS uvm_ext_gpu_map_destroy_checked(uvm_va_range_external_t *external_range,
+                                           uvm_ext_gpu_map_t *ext_gpu_map);
+
 // Deferred free function which frees the RM handle and the object itself.
 void uvm_ext_gpu_map_free(uvm_ext_gpu_map_t *ext_gpu_map);
 

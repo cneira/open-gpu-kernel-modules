@@ -1249,6 +1249,7 @@ static uvm_gpu_t *uvm_ext_gpu_map_free_internal(uvm_ext_gpu_map_t *ext_gpu_map)
 }
 
 #include "uvm_map_external_revoke_impl.h"
+#include "uvm_map_external_destroy_checked_impl.h"
 
 void uvm_ext_gpu_map_free(uvm_ext_gpu_map_t *ext_gpu_map)
 {
