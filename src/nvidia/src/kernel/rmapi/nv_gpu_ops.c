@@ -8502,6 +8502,11 @@ static NV_STATUS dupMemory(struct gpuDevice *device,
         goto freeDupedMem;
 
     *hDupMemory = dupedMemHandle;
+    NV_PRINTF(LEVEL_ERROR,
+              "sno-jow UVM dup src_client=0x%x src_memory=0x%x "
+              "dst_client=0x%x dst_memory=0x%x memdesc=%p\n",
+              hClient, hPhysMemory, session->handle, dupedMemHandle,
+              (void *)pMemDesc);
 
 freeDupedMem:
     if (status != NV_OK)
@@ -9411,6 +9416,11 @@ NV_STATUS nvGpuOpsFreeDupedHandle(struct gpuDevice *device,
     _disablePeerAccess(device, memdescGetAddressSpace(pMemory->pMemDesc));
 
 out:
+    NV_PRINTF(LEVEL_ERROR,
+              "sno-jow UVM free dst_client=0x%x dst_memory=0x%x "
+              "lookup_status=0x%x memdesc=%p\n",
+              device->session->handle, hPhysHandle, status,
+              (void *)((pMemory != NULL) ? pMemory->pMemDesc : NULL));
     pRmApi->Free(pRmApi, device->session->handle, hPhysHandle);
     _nvGpuOpsLocksRelease(&acquiredLocks);
     threadStateFree(&threadState, THREAD_STATE_FLAGS_NONE);

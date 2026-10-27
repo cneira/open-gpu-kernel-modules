@@ -525,6 +525,8 @@ void uvm_va_space_destroy(uvm_va_space_t *va_space)
     uvm_processor_mask_t *retained_gpus = &va_space->registered_gpus_teardown;
     LIST_HEAD(deferred_free_list);
 
+    UVM_INFO_PRINT("sno-jow VA destroy begin va_space=%p\n", va_space);
+
     // Remove the VA space from the global list before we start tearing things
     // down so other threads can't see the VA space in a partially-valid state.
     uvm_mutex_lock(&g_uvm_global.va_spaces.lock);
@@ -638,6 +640,7 @@ void uvm_va_space_destroy(uvm_va_space_t *va_space)
     // Perform cleanup we can't do while holding the VA space lock
 
     uvm_deferred_free_object_list(&deferred_free_list);
+    UVM_INFO_PRINT("sno-jow VA deferred frees done va_space=%p\n", va_space);
 
     // Normally we'd expect this to happen as part of uvm_release_mm()
     // but if userspace never initialized uvm_mm_fd that won't happen.

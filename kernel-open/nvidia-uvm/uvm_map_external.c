@@ -584,8 +584,12 @@ static void uvm_release_rm_handle(struct nv_kref *ref)
     if (mem_handle->rm_handle) {
         NV_STATUS status;
 
+        UVM_INFO_PRINT("sno-jow external release handle=0x%x map=%p\n",
+                       mem_handle->rm_handle, mem_handle);
         status = uvm_rm_locked_call(nvUvmInterfaceFreeDupedHandle(uvm_gpu_device_handle(mem_handle->gpu),
                                                                   mem_handle->rm_handle));
+        UVM_INFO_PRINT("sno-jow external release done handle=0x%x status=0x%x\n",
+                       mem_handle->rm_handle, status);
         UVM_ASSERT(status == NV_OK);
     }
     uvm_kvfree(mem_handle);
@@ -928,6 +932,12 @@ static NV_STATUS uvm_map_external_allocation_on_gpu(uvm_va_range_external_t *ext
                       uvm_gpu_name(mapping_gpu));
         goto error;
     }
+
+    UVM_INFO_PRINT("sno-jow external map src_client=0x%x src_memory=0x%x "
+                   "dst_memory=0x%x map=%p va_space=%p\n",
+                   user_rm_mem->user_client, user_rm_mem->user_object,
+                   ext_gpu_map->mem_handle->rm_handle,
+                   ext_gpu_map->mem_handle, va_space);
 
     status = set_ext_gpu_map_location(ext_gpu_map, va_space, mapping_gpu, &mem_info);
     if (status != NV_OK)
