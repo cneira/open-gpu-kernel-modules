@@ -68,6 +68,10 @@
 --undefined=rm_dma_buf_put_client_and_device
 --undefined=rm_gpu_ops_address_space_destroy
 --undefined=rm_gpu_ops_revoke_address_space
+--undefined=rm_gpu_ops_verify_vaspace_channels_revoked
+--undefined=rm_gpu_ops_dup_memory_tracked
+--undefined=rm_gpu_ops_free_duped_handle_checked
+--undefined=rm_gpu_ops_release_import_guard
 --undefined=rm_gpu_ops_memory_cpu_ummap
 --undefined=rm_gpu_ops_tsg_destroy
 --undefined=rm_gpu_ops_channel_destroy
