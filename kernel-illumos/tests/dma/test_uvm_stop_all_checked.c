@@ -6,6 +6,7 @@
 typedef int NV_STATUS;
 #define NV_OK 0
 #define NV_ERR_OPERATING_SYSTEM 1
+#define NV_ERR_BUSY_RETRY 2
 
 typedef struct {
     int stop_result;
@@ -25,6 +26,7 @@ typedef struct {
     int rm_revoke_calls;
     int rm_verify_result;
     int rm_verify_calls;
+    int rm_verify_busy_once;
 } uvm_gpu_va_space_t;
 
 typedef struct {
@@ -46,6 +48,10 @@ typedef struct {
 static int atomic_read(int *value) { return *value; }
 static void atomic_set(int *value, int new_value) { *value = new_value; }
 static void uvm_assert_rwsem_locked_read(int *lock) { assert(lock != NULL); }
+static void usleep_range(unsigned int min, unsigned int max)
+{
+    assert(min == 10000 && max == 12000);
+}
 static NV_STATUS
 uvm_user_channel_stop_mode_checked(uvm_user_channel_t *channel, bool immediate)
 {
@@ -71,6 +77,10 @@ nvUvmInterfaceVerifyVaSpaceChannelsRevoked(void *handle)
 {
     uvm_gpu_va_space_t *gpu = handle;
     gpu->rm_verify_calls++;
+    if (gpu->rm_verify_busy_once) {
+        gpu->rm_verify_busy_once = 0;
+        return NV_ERR_BUSY_RETRY;
+    }
     return gpu->rm_verify_result;
 }
 #define uvm_rm_locked_call(expr) (expr)
@@ -144,10 +154,11 @@ main(void)
     assert(gpu.rm_verify_calls == 1);
     assert(va.user_channels_revoked == 0);
     gpu.rm_verify_result = NV_OK;
+    gpu.rm_verify_busy_once = 1;
     assert(uvm_va_space_revoke_all_user_channels_checked(&va) == NV_OK);
     assert(channels[0].revoke_calls == 3);
     assert(gpu.rm_revoke_calls == 4);
-    assert(gpu.rm_verify_calls == 2);
+    assert(gpu.rm_verify_calls == 3);
     assert(va.user_channels_revoked == 1);
     return 0;
 }

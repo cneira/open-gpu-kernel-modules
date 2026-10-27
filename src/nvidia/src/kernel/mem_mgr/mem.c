@@ -35,6 +35,11 @@
 #include "mem_mgr/os_desc_mem.h"
 #include "mem_mgr/io_vaspace.h"
 #include "os-interface.h"
+/* RM's include chain may consume OS_INTERFACE_H before these illumos hooks. */
+NvU32 os_umem_import_guard_count(void *);
+NvBool os_umem_import_all_hardware_complete(void *);
+NV_STATUS os_umem_import_guard_released(void *);
+void os_umem_import_cancel_completed(void *);
 #endif
 #include "core/locks.h"
 #include "gpu/device/device.h"

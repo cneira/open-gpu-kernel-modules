@@ -1462,8 +1462,12 @@ static NV_STATUS uvm_ext_gpu_import_owner_revoke(void *opaque)
     owner->mem_handle = NULL;
 
     /* The checked map path retired the last duplicate and its GPU PTEs. */
-    status = uvm_rm_locked_call(nvUvmInterfaceImportHardwareComplete(
-        owner->token));
+    do {
+        status = uvm_rm_locked_call(nvUvmInterfaceImportHardwareComplete(
+            owner->token));
+        if (status == NV_ERR_BUSY_RETRY)
+            schedule();
+    } while (status == NV_ERR_BUSY_RETRY);
     if (status != NV_OK)
         goto failed;
 

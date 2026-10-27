@@ -538,9 +538,25 @@ nv_umem_lock_cleanup(ddi_umem_cookie_t *arg)
         token->in_callback = B_FALSE;
         token->revoke_thread = NULL;
         free_up = B_FALSE;
+        cv_broadcast(&nv_umem_cv);
+        if (status == NV_ERR_BUSY_RETRY) {
+            /*
+             * Normal UVM release may own this token. Hold its callback
+             * reference while it completes, then resume the outer loop so
+             * other imports on the same pin are still revoked here.
+             */
+            while (token->linked && !token->hardware_complete)
+                cv_wait(&nv_umem_cv, &nv_umem_lock);
+            VERIFY(token->refs != 0);
+            free_token = (--token->refs == 0);
+            mutex_exit(&nv_umem_lock);
+            if (free_token)
+                kmem_free(token, sizeof (*token));
+            mutex_enter(&nv_umem_lock);
+            continue;
+        }
         VERIFY(token->refs != 0);
         free_token = (--token->refs == 0); /* callback borrow */
-        cv_broadcast(&nv_umem_cv);
         if (status != NV_OK || !token->hardware_complete) {
             nv_printf(NV_DBG_ERRORS,
                 "NVRM: checked umem import revoke failed: 0x%x\n", status);

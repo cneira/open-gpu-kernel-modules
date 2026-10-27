@@ -65,8 +65,13 @@ uvm_va_space_revoke_all_user_channels_checked(uvm_va_space_t *va_space)
 
     /* A duplicated VAS can also have raw channels in another RM client. */
     for_each_gpu_va_space(gpu_va_space, va_space) {
-        status = uvm_rm_locked_call(nvUvmInterfaceVerifyVaSpaceChannelsRevoked(
-            gpu_va_space->duped_gpu_va_space));
+        do {
+            status = uvm_rm_locked_call(nvUvmInterfaceVerifyVaSpaceChannelsRevoked(
+                gpu_va_space->duped_gpu_va_space));
+            /* RM releases all client locks before reporting snapshot churn. */
+            if (status == NV_ERR_BUSY_RETRY)
+                usleep_range(10000, 12000);
+        } while (status == NV_ERR_BUSY_RETRY);
         if (status != NV_OK)
             return status;
     }
