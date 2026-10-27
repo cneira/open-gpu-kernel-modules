@@ -6,6 +6,19 @@
 #define NV_GPU_OPS_CHANNEL_REVOKE_STARTED  1U
 #define NV_GPU_OPS_CHANNEL_REVOKE_STOPPED  2U
 
+/*
+ * A retained instance may disappear when the user frees its RM channel
+ * during process exit.  Only the lookup failure can be handed to the later
+ * all-client VA-space scan; a failure from the stop control stays fatal.
+ */
+static inline NV_STATUS
+nvGpuOpsMissingChannelRevokeStatus(NV_STATUS lookupStatus, NvBool bRevoke)
+{
+    if (bRevoke && lookupStatus == NV_ERR_INVALID_CHANNEL)
+        return NV_WARN_MORE_PROCESSING_REQUIRED;
+    return lookupStatus;
+}
+
 static inline NV_STATUS
 nvGpuOpsChannelRevocationStatus(OBJVASPACE *pVAS, KernelChannel *pChannel)
 {

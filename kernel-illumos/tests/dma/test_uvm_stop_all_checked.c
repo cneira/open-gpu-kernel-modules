@@ -7,6 +7,7 @@ typedef int NV_STATUS;
 #define NV_OK 0
 #define NV_ERR_OPERATING_SYSTEM 1
 #define NV_ERR_BUSY_RETRY 2
+#define NV_WARN_MORE_PROCESSING_REQUIRED 3
 
 typedef struct {
     int stop_result;
@@ -14,6 +15,7 @@ typedef struct {
     bool last_immediate;
     int revoke_result;
     int revoke_calls;
+    int is_bound;
 } uvm_user_channel_t;
 
 typedef struct {
@@ -160,5 +162,20 @@ main(void)
     assert(gpu.rm_revoke_calls == 4);
     assert(gpu.rm_verify_calls == 3);
     assert(va.user_channels_revoked == 1);
+
+    /* Missing RM instance is provisional until the all-client scan passes. */
+    va.user_channels_revoked = 0;
+    va.user_channels_stopped = 0;
+    channels[1].revoke_result = NV_WARN_MORE_PROCESSING_REQUIRED;
+    channels[1].is_bound = 1;
+    gpu.rm_verify_result = NV_ERR_OPERATING_SYSTEM;
+    assert(uvm_va_space_revoke_all_user_channels_checked(&va) ==
+           NV_ERR_OPERATING_SYSTEM);
+    assert(va.user_channels_revoked == 0);
+    assert(channels[1].is_bound == 1);
+    gpu.rm_verify_result = NV_OK;
+    assert(uvm_va_space_revoke_all_user_channels_checked(&va) == NV_OK);
+    assert(va.user_channels_revoked == 1);
+    assert(channels[1].is_bound == 0);
     return 0;
 }

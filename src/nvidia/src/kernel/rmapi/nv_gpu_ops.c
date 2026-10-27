@@ -11744,6 +11744,7 @@ static NV_STATUS nvGpuOpsStopChannelInternal(gpuRetainedChannel *retainedChannel
     status = nvGpuOpsGetChannelData(retainedChannel, &pKernelChannel);
     if (status != NV_OK)
     {
+        status = nvGpuOpsMissingChannelRevokeStatus(status, bRevoke);
         _nvGpuOpsLocksRelease(&acquiredLocks);
         threadStateFree(&threadState, THREAD_STATE_FLAGS_NONE);
         return status;

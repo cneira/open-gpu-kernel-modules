@@ -55,6 +55,8 @@ uvm_va_space_revoke_all_user_channels_checked(uvm_va_space_t *va_space)
     for_each_gpu_va_space(gpu_va_space, va_space) {
         list_for_each_entry(user_channel, &gpu_va_space->registered_channels, list_node) {
             NV_STATUS channel_status = uvm_user_channel_revoke_checked(user_channel);
+            if (channel_status == NV_WARN_MORE_PROCESSING_REQUIRED)
+                continue; /* The all-client RM scan below must certify it. */
             if (status == NV_OK)
                 status = channel_status;
         }
@@ -74,6 +76,12 @@ uvm_va_space_revoke_all_user_channels_checked(uvm_va_space_t *va_space)
         } while (status == NV_ERR_BUSY_RETRY);
         if (status != NV_OK)
             return status;
+    }
+
+    /* A missing retained channel is certified only after the RM scan. */
+    for_each_gpu_va_space(gpu_va_space, va_space) {
+        list_for_each_entry(user_channel, &gpu_va_space->registered_channels, list_node)
+            atomic_set(&user_channel->is_bound, 0);
     }
 
     if (status == NV_OK) {
