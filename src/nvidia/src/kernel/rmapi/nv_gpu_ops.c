@@ -123,6 +123,9 @@
 #include <mem_mgr/fabric_vaspace.h>
 #include <kernel/mem_mgr/os_desc_mem.h>
 #if defined(NV_SUNOS)
+#include <kernel/gpu/mem_mgr/mem_desc.h>
+#include <mem_mgr/io_vaspace.h>
+#include <kernel/rmapi/nv_gpu_ops_original_gate.h>
 /* Implemented by the illumos long-term pin owner. */
 NV_STATUS os_umem_import_reserve(void *, void *, void **);
 void os_umem_import_cancel(void *);
@@ -9774,6 +9777,7 @@ NV_STATUS nvGpuOpsReleaseImportGuard(struct gpuDevice *device,
     THREAD_STATE_NODE threadState;
     RsClient *pClient;
     PMEMORY_DESCRIPTOR pMemDesc;
+    nv_original_guard_result_t guardAction;
     NV_STATUS status;
 
     if (device == NULL || importToken == NULL)
@@ -9803,17 +9807,13 @@ NV_STATUS nvGpuOpsReleaseImportGuard(struct gpuDevice *device,
         goto done;
     }
 
-    /* A live RM Memory still owns the original mapping and pin. */
-    if (pMemDesc->DupCount != 0)
+    guardAction = nv_original_guard_action(
+        os_umem_import_guard_count(pMemDesc), pMemDesc->DupCount,
+        os_umem_import_all_hardware_complete(pMemDesc));
+    if (guardAction == NV_ORIGINAL_GUARD_TRANSFER)
     {
-        status = NV_OK;
-        goto done;
-    }
-
-    if (!os_umem_import_all_hardware_complete(pMemDesc))
-    {
-        /* Another import is still completing; its owner will try again. */
-        status = NV_OK;
+        /* Registry ownership survives until original RM Memory teardown. */
+        status = NV_WARN_MORE_PROCESSING_REQUIRED;
         goto done;
     }
 
@@ -9822,7 +9822,7 @@ NV_STATUS nvGpuOpsReleaseImportGuard(struct gpuDevice *device,
 done:
     _nvGpuOpsLocksRelease(&acquiredLocks);
     threadStateFree(&threadState, THREAD_STATE_FLAGS_NONE);
-    if (status == NV_OK)
+    if (status == NV_OK || status == NV_WARN_MORE_PROCESSING_REQUIRED)
         os_umem_import_put(importToken);
     return status;
 #else
@@ -9831,6 +9831,96 @@ done:
     return NV_OK;
 #endif
 }
+
+#if defined(NV_SUNOS)
+/*
+ * The AS callback may retire only the original, unmapped OS descriptor.
+ * Ordinary RM Free discards several auto-unmap errors, so reject any
+ * resource shape that would exercise those paths before calling it.
+ */
+NV_STATUS
+nvGpuOpsFreeOriginalOsDescChecked(NvU32 hClient, NvU32 hMemory,
+                                  void *expectedMemDesc)
+{
+    nvGpuOpsLockSet acquiredLocks;
+    THREAD_STATE_NODE threadState;
+    Memory *pMemory = NULL;
+    RsResourceRef *pRef;
+    RsCpuMapping *pCpuMapping;
+    MEMORY_DESCRIPTOR *pMemDesc;
+    nv_original_gate_input_t gate = {0};
+    RM_API *pRmApi = rmapiGetInterface(RMAPI_GPU_LOCK_INTERNAL);
+    NV_STATUS status;
+
+    if (expectedMemDesc == NULL)
+        return NV_ERR_INVALID_ARGUMENT;
+
+    threadStateInit(&threadState, THREAD_STATE_FLAGS_NONE);
+    status = _nvGpuOpsLocksAcquireAll(RMAPI_LOCK_FLAGS_READ, hClient,
+                                     NULL, &acquiredLocks);
+    if (status != NV_OK)
+        goto done_thread;
+
+    status = nvGpuOpsGetMemoryByHandle(hClient, hMemory, &pMemory);
+    if (status != NV_OK)
+        goto done_lock;
+    pMemDesc = pMemory->pMemDesc;
+    if (pMemDesc != expectedMemDesc ||
+        dynamicCast(pMemory, OsDescMemory) == NULL) {
+        status = NV_ERR_INVALID_OBJECT;
+        goto done_lock;
+    }
+
+    pRef = RES_GET_REF(pMemory);
+    pCpuMapping = listHead(&pRef->cpuMappings);
+    gate.dup_count = pMemDesc->DupCount;
+    gate.ref_count = pMemDesc->RefCount;
+    gate.guards = os_umem_import_guard_count(pMemDesc);
+    gate.all_imports_complete =
+        os_umem_import_all_hardware_complete(pMemDesc);
+    gate.cpu_mapping_count = listCount(&pRef->cpuMappings);
+    gate.cpu_mapping_is_os_descriptor = pCpuMapping != NULL &&
+        FLD_TEST_DRF(OS33, _FLAGS, _OS_DESCRIPTOR, _ENABLE,
+                     pCpuMapping->flags) &&
+        pCpuMapping->pLinearAddress == NvP64_NULL;
+    gate.backref_count = listCount(&pRef->backRefs);
+    gate.inter_mapping_count = mapCount(&pRef->interMappingContextMap);
+    gate.inter_backref_count =
+        listCount(&pRef->interBackRefsMappable) +
+        listCount(&pRef->interBackRefsContext);
+    gate.child_count = multimapCountItems(&pRef->childRefMap);
+    gate.dependent_count = multimapCountItems(&pRef->depRefMap) +
+        multimapCountItems(&pRef->depBackRefMap);
+
+    if (!nv_original_gate_allows_free(&gate)) {
+        NV_PRINTF(LEVEL_ERROR,
+            "original OS descriptor cannot retire: dup=%u ref=%u guards=%u "
+            "cpu=%u back=%u inter=%u interback=%u child=%u dep=%u\n",
+            gate.dup_count, gate.ref_count, gate.guards,
+            gate.cpu_mapping_count, gate.backref_count,
+            gate.inter_mapping_count, gate.inter_backref_count,
+            gate.child_count, gate.dependent_count);
+        status = NV_ERR_INVALID_STATE;
+        goto done_lock;
+    }
+
+    while (pMemDesc->_pIommuMappings != NULL) {
+        NvU32 iovaspaceId = pMemDesc->_pIommuMappings->iovaspaceId;
+
+        status = memdescUnmapIommuChecked(pMemDesc, iovaspaceId);
+        if (status != NV_OK)
+            goto done_lock;
+    }
+
+    status = pRmApi->Free(pRmApi, hClient, hMemory);
+
+done_lock:
+    _nvGpuOpsLocksRelease(&acquiredLocks);
+done_thread:
+    threadStateFree(&threadState, THREAD_STATE_FLAGS_NONE);
+    return status;
+}
+#endif
 
 NV_STATUS nvGpuOpsInitFaultInfo(struct gpuDevice *device,
                                 gpuFaultInfo *pFaultInfo)

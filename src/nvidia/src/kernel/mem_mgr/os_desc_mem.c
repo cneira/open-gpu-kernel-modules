@@ -29,6 +29,7 @@
 #include "os/os.h"
 #if defined(NV_SUNOS)
 #include "os-interface.h"
+#include "kernel/rmapi/nv_gpu_ops.h"
 NvU32 os_umem_import_guard_count(void *);
 #endif
 #include "vgpu/rpc.h"
@@ -64,6 +65,9 @@ osdescConstruct_IMPL
     RsCpuMapping        *pCpuMapping       = NULL;
     NvU32                flags             = 0;
     NvU32                kind              = 0;
+#if defined(NV_SUNOS)
+    void                *pPinnedPages      = NULL;
+#endif
     FB_ALLOC_PAGE_FORMAT fbAllocPageFormat = {0};
 
 
@@ -146,6 +150,10 @@ osdescConstruct_IMPL
     // Create and fill in the memory descriptor based on the current
     // state of the OS descriptor.
     //
+#if defined(NV_SUNOS)
+    if (pUserParams->descriptorType == NVOS32_DESCRIPTOR_TYPE_OS_PAGE_ARRAY)
+        pPinnedPages = NvP64_VALUE(pUserParams->descriptor);
+#endif
     NV_CHECK_OK_OR_RETURN(LEVEL_INFO,
         osCreateMemFromOsDescriptor(pGpu,
                                     pUserParams->descriptor,
@@ -273,6 +281,15 @@ osdescConstruct_IMPL
 
     memdescSetPteKind(pMemDesc, kind);
 
+#if defined(NV_SUNOS)
+    if (pPinnedPages != NULL)
+    {
+        status = os_umem_original_publish(pPinnedPages, pMemDesc,
+            hClient, hMemory, nvGpuOpsFreeOriginalOsDescChecked);
+        NV_CHECK_OK_OR_GOTO(status, LEVEL_ERROR, status, failure);
+    }
+#endif
+
     return status;
 
 failure:
@@ -291,6 +308,11 @@ osdescDestruct_IMPL
     Memory *pMemory = staticCast(pOsDescMemory, Memory);
     OBJGPU *pGpu = pMemory->pGpu;
     MEMORY_DESCRIPTOR *pMemDesc = pMemory->pMemDesc;
+
+#if defined(NV_SUNOS)
+    os_umem_original_begin_close(pMemDesc,
+        RES_GET_CLIENT_HANDLE(pMemory), RES_GET_HANDLE(pMemory));
+#endif
 
     if (pMemDesc->DupCount == 1)
     {

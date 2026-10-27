@@ -60,6 +60,10 @@ typedef struct nv_user_pages_s {
     boolean_t            quarantined;
     void                *alloc_private;
     void                *mem_desc;
+    nv_umem_original_state_t original;
+    NvU32                original_client;
+    NvU32                original_handle;
+    NV_STATUS          (*original_free)(NvU32, NvU32, void *);
     nv_umem_pin_state_t  state;
     ddi_umem_cookie_t   cookie;
     caddr_t             addr;
@@ -87,6 +91,55 @@ static kcondvar_t nv_umem_cv;
 static list_t nv_umem_pins;
 static uint64_t nv_umem_seq;
 static boolean_t nv_umem_used;
+
+NV_STATUS NV_API_CALL
+os_umem_original_publish(void *page_array, void *mem_desc,
+    NvU32 hClient, NvU32 hMemory,
+    NV_STATUS (*checked_free)(NvU32, NvU32, void *))
+{
+    nv_user_pages_t *up;
+    NV_STATUS status = NV_ERR_INVALID_STATE;
+
+    if (page_array == NULL || mem_desc == NULL || checked_free == NULL)
+        return NV_ERR_INVALID_ARGUMENT;
+    mutex_enter(&nv_umem_lock);
+    for (up = list_head(&nv_umem_pins); up != NULL;
+        up = list_next(&nv_umem_pins, up)) {
+        if (up == page_array)
+            break;
+    }
+    if (up != NULL && !up->state.unlocked &&
+        nv_umem_original_publish(&up->original)) {
+        up->mem_desc = mem_desc;
+        up->original_client = hClient;
+        up->original_handle = hMemory;
+        up->original_free = checked_free;
+        status = NV_OK;
+        cv_broadcast(&nv_umem_cv);
+    }
+    mutex_exit(&nv_umem_lock);
+    return status;
+}
+
+void NV_API_CALL
+os_umem_original_begin_close(void *mem_desc, NvU32 hClient, NvU32 hMemory)
+{
+    nv_user_pages_t *up;
+
+    if (mem_desc == NULL)
+        return;
+    mutex_enter(&nv_umem_lock);
+    for (up = list_head(&nv_umem_pins); up != NULL;
+        up = list_next(&nv_umem_pins, up)) {
+        if (up->mem_desc == mem_desc) {
+            nv_umem_original_begin_close_if_match(&up->original,
+                up->original_client, up->original_handle, hClient, hMemory);
+            cv_broadcast(&nv_umem_cv);
+            break;
+        }
+    }
+    mutex_exit(&nv_umem_lock);
+}
 
 void
 nv_umem_init(void)
@@ -501,6 +554,10 @@ nv_umem_lock_cleanup(ddi_umem_cookie_t *arg)
     nv_user_pages_t *up;
     nv_umem_import_token_t *token;
     NV_STATUS status;
+    NvU32 original_client;
+    NvU32 original_handle;
+    NV_STATUS (*original_free)(NvU32, NvU32, void *);
+    void *original_mem_desc;
     uint64_t seq;
     boolean_t free_up;
     boolean_t free_token;
@@ -527,9 +584,31 @@ nv_umem_lock_cleanup(ddi_umem_cookie_t *arg)
                 break;
         }
         if (token == NULL) {
-            /* The final checked IOMMU unbind precedes guard release. */
-            while (!nv_umem_pin_can_unlock(&up->state))
+            /*
+             * UVM can finish while the original RM Memory still owns the
+             * descriptor.  The same thread may be blocked in this mmap,
+             * so waiting for userspace to free that handle is cyclic.
+             */
+            while (!up->state.unlocked) {
+                if (nv_umem_original_claim(&up->original)) {
+                    original_client = up->original_client;
+                    original_handle = up->original_handle;
+                    original_free = up->original_free;
+                    original_mem_desc = up->mem_desc;
+                    mutex_exit(&nv_umem_lock);
+                    status = original_free(original_client,
+                        original_handle, original_mem_desc);
+                    mutex_enter(&nv_umem_lock);
+                    if (!up->state.unlocked) {
+                        up->quarantined = B_TRUE;
+                        nv_printf(NV_DBG_ERRORS,
+                            "NVRM: checked original OS descriptor free "
+                            "did not unlock pin: 0x%x\n", status);
+                    }
+                    continue;
+                }
                 cv_wait(&nv_umem_cv, &nv_umem_lock);
+            }
             break;
         }
         if (!token->published || token->in_callback) {
@@ -647,6 +726,7 @@ NV_STATUS NV_API_CALL os_lock_user_pages(
     up->refs = 1;
     up->pending = B_TRUE;
     up->indexed = B_TRUE;
+    nv_umem_original_init(&up->original);
     nv_umem_pin_state_init(&up->state);
     list_create(&up->imports, sizeof (nv_umem_import_token_t),
         offsetof(nv_umem_import_token_t, link));
@@ -720,6 +800,7 @@ NV_STATUS NV_API_CALL os_unlock_user_pages(
         mutex_exit(&nv_umem_lock);
         return NV_OK;
     }
+    nv_umem_original_cancel(&up->original);
     nv_umem_pin_mark_unlocked(&up->state);
     /*
      * Keep the index lock through ddi_umem_unlock: it can delete a callback

@@ -1416,7 +1416,7 @@ static void uvm_ext_gpu_import_owner_finalize(void *opaque)
 
     status = uvm_rm_locked_call(nvUvmInterfaceReleaseImportGuard(
         uvm_gpu_device_handle(owner->gpu), owner->token));
-    if (status != NV_OK)
+    if (status != NV_OK && status != NV_WARN_MORE_PROCESSING_REQUIRED)
         goto failed;
 
     uvm_import_owner_finish(owner, false);
@@ -1473,7 +1473,7 @@ static NV_STATUS uvm_ext_gpu_import_owner_revoke(void *opaque)
 
     status = uvm_rm_locked_call(nvUvmInterfaceReleaseImportGuard(
         uvm_gpu_device_handle(owner->gpu), owner->token));
-    if (status != NV_OK)
+    if (status != NV_OK && status != NV_WARN_MORE_PROCESSING_REQUIRED)
         goto failed;
 
     uvm_import_owner_finish(owner, true);

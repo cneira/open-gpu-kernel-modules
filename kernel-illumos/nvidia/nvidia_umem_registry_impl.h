@@ -14,6 +14,66 @@ typedef struct nv_umem_pin_state {
     unsigned int unlocked;
 } nv_umem_pin_state_t;
 
+typedef enum nv_umem_original_phase {
+    NV_UMEM_ORIGINAL_PENDING,
+    NV_UMEM_ORIGINAL_ACTIVE,
+    NV_UMEM_ORIGINAL_CLAIMED,
+    NV_UMEM_ORIGINAL_CLOSING,
+    NV_UMEM_ORIGINAL_CANCELED,
+} nv_umem_original_phase_t;
+
+typedef struct nv_umem_original_state {
+    nv_umem_original_phase_t phase;
+} nv_umem_original_state_t;
+
+static inline void
+nv_umem_original_init(nv_umem_original_state_t *owner)
+{
+    owner->phase = NV_UMEM_ORIGINAL_PENDING;
+}
+
+static inline int
+nv_umem_original_publish(nv_umem_original_state_t *owner)
+{
+    if (owner->phase != NV_UMEM_ORIGINAL_PENDING)
+        return 0;
+    owner->phase = NV_UMEM_ORIGINAL_ACTIVE;
+    return 1;
+}
+
+static inline void
+nv_umem_original_cancel(nv_umem_original_state_t *owner)
+{
+    if (owner->phase == NV_UMEM_ORIGINAL_PENDING)
+        owner->phase = NV_UMEM_ORIGINAL_CANCELED;
+}
+
+static inline int
+nv_umem_original_claim(nv_umem_original_state_t *owner)
+{
+    if (owner->phase != NV_UMEM_ORIGINAL_ACTIVE)
+        return 0;
+    owner->phase = NV_UMEM_ORIGINAL_CLAIMED;
+    return 1;
+}
+
+static inline void
+nv_umem_original_begin_close(nv_umem_original_state_t *owner)
+{
+    if (owner->phase == NV_UMEM_ORIGINAL_ACTIVE ||
+        owner->phase == NV_UMEM_ORIGINAL_CLAIMED)
+        owner->phase = NV_UMEM_ORIGINAL_CLOSING;
+}
+
+static inline void
+nv_umem_original_begin_close_if_match(nv_umem_original_state_t *owner,
+    unsigned int owner_client, unsigned int owner_handle,
+    unsigned int closing_client, unsigned int closing_handle)
+{
+    if (owner_client == closing_client && owner_handle == closing_handle)
+        nv_umem_original_begin_close(owner);
+}
+
 /* RM stores the allocation wrapper, while os_lock_user_pages returns pin. */
 static inline int
 nv_umem_pin_matches(const void *pin, const void *alloc_private,

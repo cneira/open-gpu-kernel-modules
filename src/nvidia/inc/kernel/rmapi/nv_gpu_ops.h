@@ -166,6 +166,11 @@ NV_STATUS nvGpuOpsFreeDupedHandleChecked(struct gpuDevice *device,
                                          NvBool *pIovaReleased);
 NV_STATUS nvGpuOpsReleaseImportGuard(struct gpuDevice *device,
                                      void *importToken);
+#if defined(NV_SUNOS)
+NV_STATUS nvGpuOpsFreeOriginalOsDescChecked(NvU32 hClient,
+                                             NvU32 hMemory,
+                                             void *expectedMemDesc);
+#endif
 
 NV_STATUS nvGpuOpsGetGuid(NvHandle hClient, NvHandle hDevice,
                           NvHandle hSubDevice, NvU8 *gpuGuid,

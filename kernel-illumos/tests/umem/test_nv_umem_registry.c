@@ -161,6 +161,59 @@ test_rm_private_wrapper_identity(void)
     assert(!nv_umem_pin_matches(&pin, NULL, &rm_private));
 }
 
+static void
+test_original_owner_claims_once_after_publication(void)
+{
+    nv_umem_original_state_t owner;
+
+    nv_umem_original_init(&owner);
+    assert(!nv_umem_original_claim(&owner));
+    assert(nv_umem_original_publish(&owner));
+    assert(nv_umem_original_claim(&owner));
+    assert(!nv_umem_original_claim(&owner));
+    nv_umem_original_begin_close(&owner);
+    assert(!nv_umem_original_claim(&owner));
+}
+
+static void
+test_original_owner_normal_close_beats_callback(void)
+{
+    nv_umem_original_state_t owner;
+
+    nv_umem_original_init(&owner);
+    assert(nv_umem_original_publish(&owner));
+    nv_umem_original_begin_close(&owner);
+    assert(!nv_umem_original_claim(&owner));
+}
+
+static void
+test_duplicate_close_does_not_retire_original(void)
+{
+    nv_umem_original_state_t owner;
+
+    nv_umem_original_init(&owner);
+    assert(nv_umem_original_publish(&owner));
+    nv_umem_original_begin_close_if_match(&owner, 0x10, 0x20,
+                                          0x11, 0x20);
+    nv_umem_original_begin_close_if_match(&owner, 0x10, 0x20,
+                                          0x10, 0x21);
+    assert(nv_umem_original_claim(&owner));
+    nv_umem_original_begin_close_if_match(&owner, 0x10, 0x20,
+                                          0x10, 0x20);
+    assert(!nv_umem_original_claim(&owner));
+}
+
+static void
+test_failed_original_allocation_cancels_callback_claim(void)
+{
+    nv_umem_original_state_t owner;
+
+    nv_umem_original_init(&owner);
+    nv_umem_original_cancel(&owner);
+    assert(!nv_umem_original_publish(&owner));
+    assert(!nv_umem_original_claim(&owner));
+}
+
 int
 main(void)
 {
@@ -171,6 +224,10 @@ main(void)
     test_callback_and_guard_drop_interleave();
     test_unpublished_duplicate_checked_unwind();
     test_rm_private_wrapper_identity();
-    puts("nv_umem registry state: 7 tests passed");
+    test_original_owner_claims_once_after_publication();
+    test_original_owner_normal_close_beats_callback();
+    test_duplicate_close_does_not_retire_original();
+    test_failed_original_allocation_cancels_callback_claim();
+    puts("nv_umem registry state: 11 tests passed");
     return 0;
 }
