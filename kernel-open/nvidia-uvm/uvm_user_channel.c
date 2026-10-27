@@ -803,6 +803,11 @@ NV_STATUS uvm_user_channel_stop_checked(uvm_user_channel_t *user_channel)
     return uvm_user_channel_stop_internal(user_channel, NV_FALSE);
 }
 
+NV_STATUS uvm_user_channel_stop_mode_checked(uvm_user_channel_t *user_channel, bool immediate)
+{
+    return uvm_user_channel_stop_internal(user_channel, immediate);
+}
+
 void uvm_user_channel_stop(uvm_user_channel_t *user_channel)
 {
     NV_STATUS status = uvm_user_channel_stop_internal(

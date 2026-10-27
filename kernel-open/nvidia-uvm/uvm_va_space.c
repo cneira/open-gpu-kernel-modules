@@ -684,29 +684,17 @@ void uvm_va_space_destroy(uvm_va_space_t *va_space)
     uvm_kvfree(va_space);
 }
 
+#include "uvm_va_space_stop_all_checked_impl.h"
+
 void uvm_va_space_stop_all_user_channels(uvm_va_space_t *va_space)
 {
-    uvm_gpu_va_space_t *gpu_va_space;
-    uvm_user_channel_t *user_channel;
+    NV_STATUS status = uvm_va_space_stop_all_user_channels_status(
+        va_space, va_space->user_channel_stops_are_immediate);
 
-    // Skip if all channels have been already stopped.
-    if (atomic_read(&va_space->user_channels_stopped))
-        return;
-
-    uvm_assert_rwsem_locked_read(&va_space->lock);
-
-    for_each_gpu_va_space(gpu_va_space, va_space) {
-        list_for_each_entry(user_channel, &gpu_va_space->registered_channels, list_node)
-            uvm_user_channel_stop(user_channel);
-    }
-
-    // Since we're holding the VA space lock in read mode, multiple threads
-    // could set this concurrently. user_channels_stopped never transitions back
-    // to 0 after being set to 1 so that's not a problem.
-    atomic_set(&va_space->user_channels_stopped, 1);
+    if (status != NV_OK)
+        UVM_ERR_PRINT("Stopping all user channels failed: %s\n",
+                      nvstatusToString(status));
 }
-
-#include "uvm_va_space_stop_all_checked_impl.h"
 
 uvm_gpu_t *uvm_va_space_get_gpu_by_uuid(uvm_va_space_t *va_space, const NvProcessorUuid *gpu_uuid)
 {

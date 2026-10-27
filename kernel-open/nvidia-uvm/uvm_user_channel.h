@@ -257,6 +257,7 @@ void uvm_user_channel_release(uvm_user_channel_t *user_channel);
 // LOCKING: The owning VA space must be locked in read mode, not write mode.
 void uvm_user_channel_stop(uvm_user_channel_t *user_channel);
 NV_STATUS uvm_user_channel_stop_checked(uvm_user_channel_t *user_channel);
+NV_STATUS uvm_user_channel_stop_mode_checked(uvm_user_channel_t *user_channel, bool immediate);
 
 // Second phase of user channel destroy which detaches the channel from the
 // parent gpu_va_space and adds it to the list of pending objects to be freed.
