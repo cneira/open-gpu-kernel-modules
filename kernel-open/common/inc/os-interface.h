@@ -176,6 +176,21 @@ void        NV_API_CALL  os_bug_check                     (NvU32, const char *);
 NV_STATUS   NV_API_CALL  os_lock_user_pages               (void *, NvU64, void **, NvU32);
 NV_STATUS   NV_API_CALL  os_lookup_user_io_memory         (void *, NvU64, NvU64 **);
 NV_STATUS   NV_API_CALL  os_unlock_user_pages             (NvU64, void *, NvU32);
+#if defined(NV_SUNOS) || defined(__illumos__)
+/* Opaque ownership of an illumos long-term pin across an RM/UVM duplicate. */
+NV_STATUS os_umem_import_reserve(void *, void *, void **);
+NV_STATUS os_umem_import_publish(void *, void *, NV_STATUS (*)(void *));
+void os_umem_import_cancel(void *);
+void os_umem_import_guard_acquired(void *);
+NvU32 os_umem_import_guard_count(void *);
+NV_STATUS os_umem_import_guard_released(void *);
+NV_STATUS os_umem_import_hardware_complete(void *);
+NvBool os_umem_import_all_hardware_complete(void *);
+void os_umem_import_cancel_completed(void *);
+void *os_umem_import_memdesc(void *);
+NvBool os_umem_import_guard_pending(void *);
+void os_umem_import_put(void *);
+#endif
 NV_STATUS   NV_API_CALL  os_match_mmap_offset             (void *, NvU64, NvU64 *);
 NV_STATUS   NV_API_CALL  os_get_euid                      (NvU32 *);
 NV_STATUS   NV_API_CALL  os_get_smbios_header             (NvU64 *pSmbsAddr);

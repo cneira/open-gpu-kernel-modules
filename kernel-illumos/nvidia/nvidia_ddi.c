@@ -850,6 +850,7 @@ _init(void)
     nv_i2c_interface_init();
     nv_intr_init();
     nv_pm_init();
+    nv_umem_init();
 
     if (nv_uvm_init() != 0)
     {
@@ -873,6 +874,7 @@ _init(void)
 fail_uvm:
     nv_uvm_exit();
 fail:
+    nv_umem_fini();
     nv_pm_fini();
     nv_intr_fini();
     nv_i2c_interface_fini();
@@ -890,6 +892,9 @@ _fini(void)
 {
     int rc;
 
+    if (nv_umem_busy())
+        return (EBUSY);
+
     rc = mod_remove(&nvidia_modlinkage);
     if (rc != 0)
         return (rc);
@@ -900,6 +905,7 @@ _fini(void)
 
     nv_clone_fini();
     nv_uvm_exit();
+    nv_umem_fini();
     nv_pm_fini();
     nv_intr_fini();
     nv_i2c_interface_fini();

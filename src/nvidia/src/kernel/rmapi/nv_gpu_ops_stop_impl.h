@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* Included by nv_gpu_ops.c and the focused channel-stop status test. */
+#include "nv_gpu_ops_channel_gate_impl.h"
 static NV_STATUS
 nvGpuOpsStopChannelControl(RM_API *pRmApi, KernelChannel *pKernelChannel,
                            gpuRetainedChannel *retainedChannel,
@@ -47,8 +48,18 @@ static NV_STATUS
 nvGpuOpsRevokeChannelControl(RM_API *pRmApi, KernelChannel *pKernelChannel,
                              gpuRetainedChannel *retainedChannel)
 {
+    NV_STATUS status;
+
     /* Mark before STOP so a failed stop cannot leave a reusable channel. */
-    portAtomicOrU32(&pKernelChannel->uvmRevoked, 1);
-    return nvGpuOpsStopChannelControl(pRmApi, pKernelChannel, retainedChannel,
-                                      NV_FALSE);
+    portAtomicOrU32(&pKernelChannel->uvmRevoked,
+                    NV_GPU_OPS_CHANNEL_REVOKE_STARTED);
+    if ((portAtomicOrU32(&pKernelChannel->uvmRevoked, 0) &
+         NV_GPU_OPS_CHANNEL_REVOKE_STOPPED) != 0)
+        return NV_OK;
+    status = nvGpuOpsStopChannelControl(pRmApi, pKernelChannel,
+                                        retainedChannel, NV_FALSE);
+    if (status == NV_OK)
+        portAtomicOrU32(&pKernelChannel->uvmRevoked,
+                        NV_GPU_OPS_CHANNEL_REVOKE_STOPPED);
+    return status;
 }

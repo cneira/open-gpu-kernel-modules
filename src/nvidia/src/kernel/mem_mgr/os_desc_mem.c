@@ -27,6 +27,9 @@
 #include "rmapi/mapping_list.h"
 #include "gpu/mem_mgr/mem_desc.h"
 #include "os/os.h"
+#if defined(NV_SUNOS)
+#include "os-interface.h"
+#endif
 #include "vgpu/rpc.h"
 #include "mem_mgr/mem.h"
 #include "gpu/mem_mgr/mem_mgr.h"
@@ -290,7 +293,11 @@ osdescDestruct_IMPL
 
     if (pMemDesc->DupCount == 1)
     {
-        if (pMemDesc->RefCount > 1)
+        NvU32 importGuards = 0;
+#if defined(NV_SUNOS)
+        importGuards = os_umem_import_guard_count(pMemDesc);
+#endif
+        if (pMemDesc->RefCount > 1 + importGuards)
         {
             NV_ASSERT_FAILED("Destroying memdesc but not all refs destroyed!\n");
         }

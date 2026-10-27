@@ -10,7 +10,7 @@ nvGpuOpsUnmapDupIommu(Memory *pMemory, NvU32 iovaspaceId, NvBool bChecked)
 
 #if defined(NV_SUNOS)
     if (bChecked && dynamicCast(pMemory, OsDescMemory) != NULL)
-        return memdescUnmapIommuChecked(pMemDesc, iovaspaceId);
+        return memdescUnmapIommuDupChecked(pMemDesc, iovaspaceId);
 #else
     (void)bChecked;
 #endif

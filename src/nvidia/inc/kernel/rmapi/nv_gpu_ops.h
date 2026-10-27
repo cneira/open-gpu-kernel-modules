@@ -86,6 +86,7 @@ NV_STATUS nvGpuOpsGetP2PCaps(gpuDeviceHandle device1,
 
 void nvGpuOpsAddressSpaceDestroy(gpuAddressSpaceHandle vaSpace);
 NV_STATUS nvGpuOpsRevokeAddressSpace(gpuAddressSpaceHandle vaSpace);
+NV_STATUS nvGpuOpsVerifyVaSpaceChannelsRevoked(gpuAddressSpaceHandle vaSpace);
 
 NV_STATUS nvGpuOpsMemoryAllocFb (gpuAddressSpaceHandle vaSpace,
     NvLength length, NvU64 *gpuOffset, gpuAllocInfo * allocInfo);
@@ -154,6 +155,17 @@ NV_STATUS nvGpuOpsDupMemory(struct gpuDevice *device,
                             NvHandle hPhysMemory,
                             NvHandle *hDupMemory,
                             gpuMemoryInfo *pGpuMemoryInfo);
+NV_STATUS nvGpuOpsDupMemoryTracked(struct gpuDevice *device,
+                                   NvHandle hClient,
+                                   NvHandle hPhysMemory,
+                                   NvHandle *hDupMemory,
+                                   gpuMemoryInfo *pGpuMemoryInfo,
+                                   void **ppImportToken);
+NV_STATUS nvGpuOpsFreeDupedHandleChecked(struct gpuDevice *device,
+                                         NvHandle hPhysHandle,
+                                         NvBool *pIovaReleased);
+NV_STATUS nvGpuOpsReleaseImportGuard(struct gpuDevice *device,
+                                     void *importToken);
 
 NV_STATUS nvGpuOpsGetGuid(NvHandle hClient, NvHandle hDevice,
                           NvHandle hSubDevice, NvU8 *gpuGuid,

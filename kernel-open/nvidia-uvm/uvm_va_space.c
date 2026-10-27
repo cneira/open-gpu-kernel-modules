@@ -89,6 +89,29 @@ static void remove_gpu_va_space(uvm_gpu_va_space_t *gpu_va_space,
                                 struct list_head *deferred_free_list);
 static void va_space_remove_dummy_thread_contexts(uvm_va_space_t *va_space);
 
+static void uvm_va_space_import_release_worker(void *data)
+{
+    uvm_va_space_t *va_space = data;
+
+    uvm_down_read(&g_uvm_global.pm.lock);
+    uvm_va_space_destroy(va_space);
+    uvm_up_read(&g_uvm_global.pm.lock);
+}
+
+void uvm_va_space_resume_import_release(uvm_va_space_t *va_space)
+{
+    int queued;
+
+    if (uvm_va_space_has_tracked_imports(va_space) ||
+        atomic_cmpxchg(&va_space->import_release_pending, 1, 2) != 1)
+        return;
+
+    queued = nv_kthread_q_schedule_q_item(&g_uvm_global.deferred_release_q,
+                                           &va_space->import_resume_release_q_item);
+    if (!queued)
+        UVM_ERR_PRINT("Failed to queue retained VA-space release\n");
+}
+
 static void init_tools_data(uvm_va_space_t *va_space)
 {
     int i;
@@ -254,6 +277,14 @@ NV_STATUS uvm_va_space_create(struct address_space *mapping, uvm_va_space_t **va
         uvm_kvfree(va_space);
         return NV_ERR_INVALID_ARGUMENT;
     }
+
+    atomic_set(&va_space->import_owner_count, 0);
+    atomic_set(&va_space->tracked_imports_blocked, 0);
+    atomic_set(&va_space->import_release_pending, 0);
+    INIT_LIST_HEAD(&va_space->import_owners);
+    uvm_spin_lock_init(&va_space->import_owner_lock, UVM_LOCK_ORDER_LEAF);
+    nv_kthread_q_item_init(&va_space->import_resume_release_q_item,
+                           uvm_va_space_import_release_worker, va_space);
 
     uvm_init_rwsem(&va_space->lock, UVM_LOCK_ORDER_VA_SPACE);
     uvm_mutex_init(&va_space->closest_processors.mask_mutex, UVM_LOCK_ORDER_LEAF);
@@ -522,8 +553,33 @@ void uvm_va_space_destroy(uvm_va_space_t *va_space)
     uvm_va_range_t *va_range, *va_range_next;
     uvm_gpu_t *gpu;
     uvm_gpu_id_t gpu_id;
+    NV_STATUS import_status;
     uvm_processor_mask_t *retained_gpus = &va_space->registered_gpus_teardown;
     LIST_HEAD(deferred_free_list);
+
+    /* Normal file close may have no CPU unmap callback to start revocation. */
+    if (uvm_va_space_has_tracked_imports(va_space)) {
+        import_status = uvm_va_space_revoke_tracked_imports_checked(va_space);
+        if (import_status != NV_OK && import_status != NV_ERR_BUSY_RETRY)
+            UVM_ERR_PRINT("Tracked import release failed: %s\n",
+                          nvstatusToString(import_status));
+    }
+
+    /*
+     * A tracked OS-descriptor import may already be off the range tree and
+     * waiting for deferred RM free. Releasing the VA space here would leave
+     * its pin callback with a dangling GPU/VA owner. Keep the whole VA space
+     * intact until every checked import teardown has completed.
+     */
+    if (uvm_va_space_has_tracked_imports(va_space)) {
+        (void) atomic_cmpxchg(&va_space->import_release_pending, 0, 1);
+        /* Close the owner-count transition race with the last finalizer. */
+        if (uvm_va_space_has_tracked_imports(va_space))
+            UVM_ERR_PRINT("Retaining VA space with live tracked imports\n");
+        else
+            uvm_va_space_resume_import_release(va_space);
+        return;
+    }
 
     // Remove the VA space from the global list before we start tearing things
     // down so other threads can't see the VA space in a partially-valid state.
@@ -681,6 +737,11 @@ void uvm_va_space_destroy(uvm_va_space_t *va_space)
     uvm_mutex_unlock(&g_uvm_global.global_lock);
 
     uvm_kvfree(va_space->mapping);
+#if defined(NV_SUNOS)
+    /* The final VA owner has finished using the file's accounting state. */
+    if (va_space->import_release_file != NULL)
+        uvm_illumos_finish_deferred_file(va_space->import_release_file);
+#endif
     uvm_kvfree(va_space);
 }
 
@@ -823,6 +884,12 @@ NV_STATUS uvm_va_space_register_gpu(uvm_va_space_t *va_space,
     }
 
     uvm_va_space_down_write(va_space);
+
+    if (atomic_read(&va_space->tracked_imports_blocked) ||
+        uvm_va_space_has_tracked_imports(va_space)) {
+        status = NV_ERR_INVALID_STATE;
+        goto done;
+    }
 
     // Make sure the gpu hasn't been already registered in this va space
     if (uvm_processor_mask_test(&va_space->registered_gpus, gpu->id)) {
@@ -1045,8 +1112,17 @@ NV_STATUS uvm_va_space_unregister_gpu(uvm_va_space_t *va_space, const NvProcesso
     // or unregister operations.
     uvm_va_space_down_write(va_space);
 
+    /* Hold publication closed across the read-lock gap below. */
+    if (atomic_read(&va_space->tracked_imports_blocked) ||
+        uvm_va_space_has_tracked_imports(va_space)) {
+        uvm_va_space_up_write(va_space);
+        return NV_ERR_INVALID_STATE;
+    }
+    atomic_set(&va_space->tracked_imports_blocked, 1);
+
     gpu = uvm_va_space_get_gpu_by_uuid(va_space, gpu_uuid);
     if (!gpu) {
+        atomic_set(&va_space->tracked_imports_blocked, 0);
         uvm_va_space_up_write(va_space);
         return NV_ERR_INVALID_DEVICE;
     }
@@ -1057,6 +1133,7 @@ NV_STATUS uvm_va_space_unregister_gpu(uvm_va_space_t *va_space, const NvProcesso
     // - GPU VA space register
     // - GPU unregister (which would allow new GPU registers)
     if (uvm_processor_mask_test(&va_space->gpu_unregister_in_progress, gpu->id)) {
+        atomic_set(&va_space->tracked_imports_blocked, 0);
         uvm_va_space_up_write(va_space);
         return NV_ERR_INVALID_DEVICE;
     }
@@ -1119,6 +1196,8 @@ NV_STATUS uvm_va_space_unregister_gpu(uvm_va_space_t *va_space, const NvProcesso
 
     UVM_ASSERT(uvm_processor_mask_test(&va_space->gpu_unregister_in_progress, gpu->id));
     uvm_processor_mask_clear(&va_space->gpu_unregister_in_progress, gpu->id);
+
+    atomic_set(&va_space->tracked_imports_blocked, 0);
 
     uvm_va_space_up_write(va_space);
 
@@ -1286,6 +1365,10 @@ static NV_STATUS enable_peers(uvm_va_space_t *va_space, uvm_gpu_t *gpu0, uvm_gpu
     LIST_HEAD(deferred_free_list);
 
     uvm_assert_rwsem_locked_write(&va_space->lock);
+
+    /* A rollback would otherwise destroy tracked maps under the VA writer. */
+    if (uvm_va_space_has_tracked_imports(va_space))
+        return NV_ERR_INVALID_STATE;
 
     // We know the GPUs were retained already, so now verify that they've been
     // registered by this specific VA space.
@@ -1922,7 +2005,10 @@ NV_STATUS uvm_va_space_unregister_gpu_va_space(uvm_va_space_t *va_space, const N
         UVM_ASSERT(gpu == uvm_va_space_get_gpu_by_uuid_with_gpu_va_space(va_space, gpu_uuid));
         UVM_ASSERT(gpu_va_space == uvm_gpu_va_space_get(va_space, gpu));
 
-        remove_gpu_va_space(gpu_va_space, mm, &deferred_free_list);
+        if (uvm_va_space_has_tracked_imports(va_space))
+            status = NV_ERR_INVALID_STATE;
+        else
+            remove_gpu_va_space(gpu_va_space, mm, &deferred_free_list);
     }
 
     uvm_va_space_up_write(va_space);
@@ -2157,6 +2243,11 @@ NV_STATUS uvm_api_disable_peer_access(UVM_DISABLE_PEER_ACCESS_PARAMS *params, st
 
     uvm_va_space_down_write(va_space);
 
+    if (uvm_va_space_has_tracked_imports(va_space)) {
+        status = NV_ERR_INVALID_STATE;
+        goto error;
+    }
+
     gpu0 = uvm_va_space_get_gpu_by_uuid(va_space, &params->gpuUuidA);
     gpu1 = uvm_va_space_get_gpu_by_uuid(va_space, &params->gpuUuidB);
 
@@ -2255,6 +2346,11 @@ NV_STATUS uvm_test_disable_static_peer_access(UVM_TEST_DISABLE_STATIC_PEER_ACCES
     LIST_HEAD(deferred_free_list);
 
     uvm_va_space_down_write(va_space);
+
+    if (uvm_va_space_has_tracked_imports(va_space)) {
+        status = NV_ERR_INVALID_STATE;
+        goto error;
+    }
 
     gpu0 = uvm_va_space_get_gpu_by_uuid(va_space, &params->gpuUuidA);
     gpu1 = uvm_va_space_get_gpu_by_uuid(va_space, &params->gpuUuidB);

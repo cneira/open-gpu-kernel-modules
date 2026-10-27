@@ -199,6 +199,7 @@ NV_STATUS nvUvmInterfaceDupAddressSpace(uvmGpuDeviceHandle device,
 
 void nvUvmInterfaceAddressSpaceDestroy(uvmGpuAddressSpaceHandle vaSpace);
 NV_STATUS nvUvmInterfaceRevokeAddressSpace(uvmGpuAddressSpaceHandle vaSpace);
+NV_STATUS nvUvmInterfaceVerifyVaSpaceChannelsRevoked(uvmGpuAddressSpaceHandle vaSpace);
 
 /*******************************************************************************
     nvUvmInterfaceMemoryAllocFB
@@ -772,6 +773,23 @@ NV_STATUS nvUvmInterfaceDupMemory(uvmGpuDeviceHandle device,
                                   NvHandle hPhysMemory,
                                   NvHandle *hDupMemory,
                                   UvmGpuMemoryInfo *pGpuMemoryInfo);
+
+/* The token is opaque until UVM publishes its exact external-map owner. */
+NV_STATUS nvUvmInterfaceDupMemoryTracked(uvmGpuDeviceHandle device,
+                                         NvHandle hClient,
+                                         NvHandle hPhysMemory,
+                                         NvHandle *hDupMemory,
+                                         UvmGpuMemoryInfo *pGpuMemoryInfo,
+                                         void **ppImportToken);
+NV_STATUS nvUvmInterfacePublishImport(void *token, void *owner,
+                                      NV_STATUS (*revoke)(void *));
+void nvUvmInterfaceCancelImport(void *token);
+NV_STATUS nvUvmInterfaceImportHardwareComplete(void *token);
+NV_STATUS nvUvmInterfaceReleaseImportGuard(uvmGpuDeviceHandle device,
+                                           void *token);
+NV_STATUS nvUvmInterfaceFreeDupedHandleChecked(uvmGpuDeviceHandle device,
+                                               NvHandle hPhysHandle,
+                                               NvBool *pIovaReleased);
 
 /*******************************************************************************
     nvUvmInterfaceFreeDupedAllocation

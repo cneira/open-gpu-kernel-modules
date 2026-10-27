@@ -195,6 +195,21 @@ struct uvm_va_space_struct
     // Semaphore protecting the state of the va space
     uvm_rw_semaphore_t lock;
 
+    // Tracks imported OS descriptors independently of external-map trees.
+    // A normal unmap can detach a map before its RM duplicate is freed, so
+    // VA-space release must not use a tree scan as its completion gate.
+    atomic_t import_owner_count;
+    // Owners remain discoverable after a map fragment leaves its range tree.
+    struct list_head import_owners;
+    uvm_spinlock_t import_owner_lock;
+    atomic_t tracked_imports_blocked;
+    atomic_t import_release_pending;
+    struct file *import_release_file;
+
+    // Dedicated queue item for resuming a file release quarantined by a
+    // tracked import. The ordinary deferred-release item may still be active.
+    nv_kthread_q_item_t import_resume_release_q_item;
+
     // Lock taken prior to taking the VA space lock in write mode, or prior to
     // taking the VA space lock in read mode on a path which will call in RM.
     // See UVM_LOCK_ORDER_VA_SPACE_SERIALIZE_WRITERS in uvm_lock.h.
@@ -437,6 +452,18 @@ struct uvm_va_space_struct
     // Queue item for deferred f_ops->release() handling
     nv_kthread_q_item_t deferred_release_q_item;
 };
+
+static inline bool uvm_va_space_has_tracked_imports(uvm_va_space_t *va_space)
+{
+    return atomic_read(&va_space->import_owner_count) != 0;
+}
+
+void uvm_va_space_resume_import_release(uvm_va_space_t *va_space);
+
+#if defined(NV_SUNOS)
+void uvm_illumos_defer_file_finish(struct file *filp);
+void uvm_illumos_finish_deferred_file(struct file *filp);
+#endif
 
 NV_STATUS uvm_va_space_create(struct address_space *mapping, uvm_va_space_t **va_space_ptr, NvU64 flags);
 void uvm_va_space_destroy(uvm_va_space_t *va_space);

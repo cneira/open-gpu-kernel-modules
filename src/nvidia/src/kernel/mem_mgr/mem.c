@@ -31,6 +31,11 @@
 #include "gpu/mem_mgr/mem_mgr.h"
 #include "gpu/disp/disp_objs.h"
 #include "gpu/mem_mgr/mem_desc.h"
+#if defined(NV_SUNOS)
+#include "mem_mgr/os_desc_mem.h"
+#include "mem_mgr/io_vaspace.h"
+#include "os-interface.h"
+#endif
 #include "core/locks.h"
 #include "gpu/device/device.h"
 #include "gpu/subdevice/subdevice.h"
@@ -147,6 +152,56 @@ memGetMapAddrSpace_IMPL
     return NV_OK;
 }
 
+/*
+ * The last OS-descriptor Memory is about to drop its memdesc reference.
+ * UVM's checked release has already removed every imported GPU mapping.
+ * Release the original IOVA reference before memdescFree() can invoke its
+ * legacy, unchecked IOMMU cleanup and before memdescDestroy() can unpin RAM.
+ * A failed barrier leaves the tagged guards, descriptor and pin intact.
+ */
+#if defined(NV_SUNOS)
+NV_STATUS
+memReleaseTrackedOsDescGuardsChecked(MEMORY_DESCRIPTOR *pMemDesc,
+                                     NvU32 retainedMemoryRefs)
+{
+    NvU32 guards = os_umem_import_guard_count(pMemDesc);
+    NV_STATUS status;
+    NvU32 i;
+
+    if (guards == 0)
+        return NV_OK;
+    if (pMemDesc->DupCount != 0 ||
+        pMemDesc->RefCount != guards + retainedMemoryRefs ||
+        !os_umem_import_all_hardware_complete(pMemDesc))
+        return NV_ERR_INVALID_STATE;
+
+    while (pMemDesc->_pIommuMappings != NULL)
+    {
+        NvU32 iovaspaceId = pMemDesc->_pIommuMappings->iovaspaceId;
+
+        status = memdescUnmapIommuChecked(pMemDesc, iovaspaceId);
+        if (status != NV_OK)
+            return status;
+    }
+
+    /*
+     * Keep completed tokens discoverable until their guards are accounted
+     * for.  The final descriptor reference is still held by the last guard
+     * when we unlink them, so the memdesc pointer remains valid here.
+     */
+    for (i = 0; i < guards; i++)
+    {
+        status = os_umem_import_guard_released(pMemDesc);
+        if (status != NV_OK)
+            return status;
+        if (i + 1 == guards)
+            os_umem_import_cancel_completed(pMemDesc);
+        memdescDestroy(pMemDesc);
+    }
+    return NV_OK;
+}
+#endif
+
 void
 memDestruct_IMPL
 (
@@ -167,9 +222,30 @@ memDestruct_IMPL
     {
         // Remove the system memory reference from the client
         memDestructCommon(pMemory);
+#if defined(NV_SUNOS)
+        if (dynamicCast(pMemory, OsDescMemory) != NULL &&
+            os_umem_import_guard_count(pMemory->pMemDesc) != 0)
+        {
+            status = memReleaseTrackedOsDescGuardsChecked(
+                pMemory->pMemDesc, 1);
+            if (status != NV_OK)
+            {
+                NV_PRINTF(LEVEL_ERROR,
+                          "tracked OS descriptor cannot release pin: 0x%x\n",
+                          status);
+                /* Drop only this Memory's reference; guards quarantine pin. */
+                memdescDestroy(pMemory->pMemDesc);
+                goto memDestructDone;
+            }
+        }
+#endif
         memdescFree(pMemory->pMemDesc);
         memdescDestroy(pMemory->pMemDesc);
     }
+
+#if defined(NV_SUNOS)
+memDestructDone:
+#endif
 
     // if the allocation is RPC-ed, free using RPC
     if (pMemory->bRpcAlloc && (IS_VIRTUAL(pGpu) || IS_FW_CLIENT(pGpu)))

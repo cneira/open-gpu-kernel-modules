@@ -10,8 +10,9 @@ uvm_release_rm_handle_checked(uvm_ext_gpu_mem_handle *mem_handle)
         nv_kref_read(&mem_handle->ref_count) != 1)
         return NV_ERR_INVALID_STATE;
 
-    status = uvm_rm_locked_call(nvUvmInterfaceFreeDupedHandle(
-        uvm_gpu_device_handle(mem_handle->gpu), mem_handle->rm_handle));
+    status = uvm_rm_locked_call(nvUvmInterfaceFreeDupedHandleChecked(
+        uvm_gpu_device_handle(mem_handle->gpu), mem_handle->rm_handle,
+        &mem_handle->checked_iova_released));
     if (status != NV_OK) {
         /* RM may have partly freed the handle; retry is not provably safe. */
         mem_handle->checked_release_failed = true;

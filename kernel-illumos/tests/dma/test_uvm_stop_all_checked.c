@@ -23,6 +23,8 @@ typedef struct {
     void *duped_gpu_va_space;
     int rm_revoke_result;
     int rm_revoke_calls;
+    int rm_verify_result;
+    int rm_verify_calls;
 } uvm_gpu_va_space_t;
 
 typedef struct {
@@ -63,6 +65,13 @@ nvUvmInterfaceRevokeAddressSpace(void *handle)
     uvm_gpu_va_space_t *gpu = handle;
     gpu->rm_revoke_calls++;
     return gpu->rm_revoke_result;
+}
+static NV_STATUS
+nvUvmInterfaceVerifyVaSpaceChannelsRevoked(void *handle)
+{
+    uvm_gpu_va_space_t *gpu = handle;
+    gpu->rm_verify_calls++;
+    return gpu->rm_verify_result;
 }
 #define uvm_rm_locked_call(expr) (expr)
 
@@ -129,9 +138,16 @@ main(void)
     assert(va.user_channels_stopped == 0);
     assert(va.user_channels_revoked == 0);
     channels[1].revoke_result = NV_OK;
+    gpu.rm_verify_result = NV_ERR_OPERATING_SYSTEM;
+    assert(uvm_va_space_revoke_all_user_channels_checked(&va) ==
+           NV_ERR_OPERATING_SYSTEM);
+    assert(gpu.rm_verify_calls == 1);
+    assert(va.user_channels_revoked == 0);
+    gpu.rm_verify_result = NV_OK;
     assert(uvm_va_space_revoke_all_user_channels_checked(&va) == NV_OK);
-    assert(channels[0].revoke_calls == 2);
-    assert(gpu.rm_revoke_calls == 3);
+    assert(channels[0].revoke_calls == 3);
+    assert(gpu.rm_revoke_calls == 4);
+    assert(gpu.rm_verify_calls == 2);
     assert(va.user_channels_revoked == 1);
     return 0;
 }

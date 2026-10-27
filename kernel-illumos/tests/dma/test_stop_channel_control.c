@@ -6,6 +6,7 @@
 typedef int NV_STATUS;
 typedef int NvBool;
 typedef unsigned int NvU32;
+typedef struct OBJVASPACE { int unused; } OBJVASPACE;
 typedef struct { NvBool bImmediate; } NVA06F_CTRL_STOP_CHANNEL_PARAMS;
 typedef struct {
     NvU32 engineType;
@@ -22,6 +23,7 @@ typedef struct {
 } gpuRetainedChannel;
 typedef struct {
     NvBool bIsContextBound;
+    OBJVASPACE *pVAS;
     volatile NvU32 uvmRevoked;
     NvU32 client;
     NvU32 handle;
@@ -33,6 +35,7 @@ struct RM_API {
 
 #define NV_OK 0
 #define NV_ERR_OPERATING_SYSTEM 1
+#define NV_ERR_INVALID_STATE 2
 #define NV_FALSE 0
 #define NV_TRUE 1
 #define NVA06F_CTRL_CMD_STOP_CHANNEL 10
@@ -132,19 +135,29 @@ main(void)
     assert(nvGpuOpsRevokeChannelControl(&api, &channel, &retained)
            == NV_ERR_OPERATING_SYSTEM);
     assert(revoked_before_stop == NV_TRUE);
-    assert(channel.uvmRevoked != 0);
+    assert(channel.uvmRevoked == 1);
     assert(channel.bIsContextBound == NV_TRUE);
 
     stop_status = NV_OK;
     evict_status = NV_ERR_OPERATING_SYSTEM;
     assert(nvGpuOpsRevokeChannelControl(&api, &channel, &retained)
            == NV_ERR_OPERATING_SYSTEM);
-    assert(channel.uvmRevoked != 0);
+    assert(channel.uvmRevoked == 1);
     assert(channel.bIsContextBound == NV_TRUE);
 
     evict_status = NV_OK;
     assert(nvGpuOpsRevokeChannelControl(&api, &channel, &retained) == NV_OK);
     assert(channel.bIsContextBound == NV_FALSE);
+    assert(channel.uvmRevoked == 3);
+
+    /* A retry after a transient scan failure must not stop it twice. */
+    {
+        int completed_stops = stop_count;
+        int completed_evictions = evict_count;
+        assert(nvGpuOpsRevokeChannelControl(&api, &channel, &retained) == NV_OK);
+        assert(stop_count == completed_stops);
+        assert(evict_count == completed_evictions);
+    }
 
     /* Ordinary UVM stop does not revoke a reusable channel. */
     channel.uvmRevoked = 0;

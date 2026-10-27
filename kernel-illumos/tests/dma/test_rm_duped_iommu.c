@@ -30,7 +30,7 @@ memdescRequiresIommuMapping(PMEMORY_DESCRIPTOR desc)
 }
 
 static NV_STATUS
-memdescUnmapIommuChecked(PMEMORY_DESCRIPTOR desc, NvU32 id)
+memdescUnmapIommuDupChecked(PMEMORY_DESCRIPTOR desc, NvU32 id)
 {
     assert(desc != NULL && id == 7);
     checked_count++;

@@ -203,6 +203,18 @@ static void uvm_release_va_space(struct file *filp, uvm_va_space_t *va_space)
 {
     int ret;
 
+#if defined(NV_SUNOS)
+    /* Serialize with in-flight tracked-map publication before file close. */
+    uvm_va_space_down_write(va_space);
+    atomic_set(&va_space->tracked_imports_blocked, 1);
+    uvm_va_space_up_write(va_space);
+
+    if (uvm_va_space_has_tracked_imports(va_space)) {
+        va_space->import_release_file = filp;
+        uvm_illumos_defer_file_finish(filp);
+    }
+#endif
+
     filp->private_data = NULL;
     filp->f_mapping = NULL;
 

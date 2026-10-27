@@ -4424,6 +4424,39 @@ memdescUnmapIommuChecked(PMEMORY_DESCRIPTOR pMemDesc, NvU32 iovaspaceId)
 #endif
 }
 
+/*
+ * Release exactly one UVM duplicate's IOVA reference. When the original
+ * import still owns the hardware mapping, this only decrements the reference
+ * count; the final reference takes the checked DMA-unbind path. Callers must
+ * hold the RM serialization used by memdescMapIommu().
+ */
+NV_STATUS
+memdescUnmapIommuDupChecked(PMEMORY_DESCRIPTOR pMemDesc, NvU32 iovaspaceId)
+{
+#if (RMCFG_FEATURE_PLATFORM_UNIX || RMCFG_FEATURE_PLATFORM_MODS) && !NVCPU_IS_ARM
+    PIOVAMAPPING pIovaMapping;
+
+    if (iovaspaceId == NV_IOVA_DOMAIN_NONE)
+        return NV_OK;
+
+    pIovaMapping = memdescGetIommuMap(pMemDesc, iovaspaceId);
+    if (pIovaMapping == NULL || pIovaMapping->refcount == 0 ||
+        pIovaMapping->link.pChildren != NULL ||
+        memdescIsSubMemoryMemDesc(pIovaMapping->pPhysMemDesc))
+        return NV_ERR_NOT_SUPPORTED;
+
+    if (pIovaMapping->refcount > 1)
+    {
+        --pIovaMapping->refcount;
+        return NV_OK;
+    }
+
+    return memdescUnmapIommuChecked(pMemDesc, iovaspaceId);
+#else
+    return NV_ERR_NOT_SUPPORTED;
+#endif
+}
+
 void memdescCheckSubDevicePageSizeConsistency
 (
     OBJGPU              *pGpu,

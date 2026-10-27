@@ -5,6 +5,7 @@
 
 typedef int NV_STATUS;
 typedef unsigned int NvHandle;
+typedef int NvBool;
 typedef struct { int unused; } uvm_gpu_t;
 typedef struct { unsigned int refcount; } nv_kref_t;
 typedef struct {
@@ -12,6 +13,7 @@ typedef struct {
     NvHandle rm_handle;
     nv_kref_t ref_count;
     bool checked_release_failed;
+    NvBool checked_iova_released;
 } uvm_ext_gpu_mem_handle;
 
 #define NV_OK 0
@@ -31,9 +33,12 @@ nv_kref_read(const nv_kref_t *ref)
 }
 
 static NV_STATUS
-nvUvmInterfaceFreeDupedHandle(uvm_gpu_t *gpu, NvHandle handle)
+nvUvmInterfaceFreeDupedHandleChecked(uvm_gpu_t *gpu, NvHandle handle,
+                                     NvBool *iova_released)
 {
     assert(gpu != NULL && handle != 0);
+    assert(iova_released != NULL);
+    *iova_released = 1;
     free_calls++;
     return free_status;
 }
@@ -77,14 +82,16 @@ main(void)
     free_status = NV_ERR_OPERATING_SYSTEM;
     assert(uvm_release_rm_handle_checked(&failed) ==
            NV_ERR_OPERATING_SYSTEM);
-    assert(failed.checked_release_failed && failed.rm_handle == 5);
+    assert(failed.checked_release_failed && failed.checked_iova_released &&
+           failed.rm_handle == 5);
     assert(failed.ref_count.refcount == 1 && release_calls == 0);
     assert(uvm_release_rm_handle_checked(&failed) == NV_ERR_INVALID_STATE);
     assert(free_calls == 1);
 
     free_status = NV_OK;
     assert(uvm_release_rm_handle_checked(&success) == NV_OK);
-    assert(success.rm_handle == 0 && success.ref_count.refcount == 0);
+    assert(success.rm_handle == 0 && success.ref_count.refcount == 0 &&
+           success.checked_iova_released);
     assert(free_calls == 2 && release_calls == 1);
     return 0;
 }
