@@ -29,6 +29,7 @@
 #include "os/os.h"
 #if defined(NV_SUNOS)
 #include "os-interface.h"
+NvU32 os_umem_import_guard_count(void *);
 #endif
 #include "vgpu/rpc.h"
 #include "mem_mgr/mem.h"
