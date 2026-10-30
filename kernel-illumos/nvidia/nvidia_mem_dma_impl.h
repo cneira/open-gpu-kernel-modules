@@ -33,11 +33,21 @@ nv_dma_identity_bind_chunk(nv_dma_chunk_t *c, int (*waitfp)(caddr_t))
     ddi_dma_impl_t *impl;
     size_t covered = 0;
     uint_t ccount, i;
+    int result;
 
-    if (c->len == 0 ||
-        ddi_dma_addr_bind_handle(c->dma_handle, NULL, c->kva, c->len,
-            DDI_DMA_RDWR | DDI_DMA_CONSISTENT, waitfp, NULL,
-            &cookie, &ccount) != DDI_DMA_MAPPED)
+    if (c->len == 0)
+        return NV_FALSE;
+
+    result = ddi_dma_addr_bind_handle(c->dma_handle, NULL, c->kva, c->len,
+        DDI_DMA_RDWR | DDI_DMA_CONSISTENT, waitfp, NULL,
+        &cookie, &ccount);
+    if (result == DDI_DMA_PARTIAL_MAP)
+    {
+        /* Unexpected without DDI_DMA_PARTIAL, but resources are still bound. */
+        c->bound = NV_TRUE;
+        goto reject;
+    }
+    if (result != DDI_DMA_MAPPED)
         return NV_FALSE;
 
     c->bound = NV_TRUE;

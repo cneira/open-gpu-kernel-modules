@@ -21,6 +21,7 @@ typedef unsigned int uint_t;
 #define MMU_PAGESIZE 4096
 #define DDI_SUCCESS 0
 #define DDI_DMA_MAPPED 1
+#define DDI_DMA_PARTIAL_MAP 9
 #define DDI_DMA_RDWR 2
 #define DDI_DMA_CONSISTENT 4
 #define DMP_NOSYNC 8
@@ -181,6 +182,14 @@ main(void)
 
     chunk = new_chunk();
     cookies[0].dmac_laddress += 4096;
+    unbind_result = -1;
+    assert(nv_dma_identity_bind_chunk(&chunk, NULL) == NV_FALSE);
+    assert(chunk.bound == NV_TRUE);
+    assert(nv_dma_release_chunk(&chunk) == NV_FALSE);
+    assert(mem_free_calls == 0 && handle_free_calls == 0);
+
+    chunk = new_chunk();
+    bind_result = DDI_DMA_PARTIAL_MAP;
     unbind_result = -1;
     assert(nv_dma_identity_bind_chunk(&chunk, NULL) == NV_FALSE);
     assert(chunk.bound == NV_TRUE);
