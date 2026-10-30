@@ -104,3 +104,23 @@ nv_dma_release_chunk(nv_dma_chunk_t *c)
         ddi_dma_free_handle(&c->dma_handle);
     return NV_TRUE;
 }
+
+static void
+nv_dma_release_chunks(nv_dma_chunk_t *chunks, uint_t count,
+    void (*retained)(nv_dma_chunk_t *), uint_t *retained_count,
+    NvU64 *retained_bytes)
+{
+    uint_t i;
+
+    *retained_count = 0;
+    *retained_bytes = 0;
+    for (i = 0; i < count; i++)
+    {
+        if (!nv_dma_release_chunk(&chunks[i]))
+        {
+            (*retained_count)++;
+            *retained_bytes += chunks[i].len;
+            retained(&chunks[i]);
+        }
+    }
+}

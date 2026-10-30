@@ -71,7 +71,7 @@ nv_dma_detect_remap(dev_info_t *dip)
     size_t len;
     uint_t ccount;
     NvBool remap = NV_TRUE;
-    NvBool bound = NV_FALSE;
+    int bind_result;
 
     nv_dma_attr_init(&attr, UINT64_MAX, MMU_PAGESIZE, 1);
 
@@ -85,15 +85,15 @@ nv_dma_detect_remap(dev_info_t *dip)
         return NV_TRUE;
     }
 
-    if (ddi_dma_addr_bind_handle(h, NULL, kva, MMU_PAGESIZE,
-            DDI_DMA_RDWR | DDI_DMA_CONSISTENT, DDI_DMA_SLEEP, NULL,
-            &cookie, &ccount) == DDI_DMA_MAPPED)
+    bind_result = ddi_dma_addr_bind_handle(h, NULL, kva, MMU_PAGESIZE,
+        DDI_DMA_RDWR | DDI_DMA_CONSISTENT, DDI_DMA_SLEEP, NULL,
+        &cookie, &ccount);
+    if (bind_result == DDI_DMA_MAPPED)
     {
-        bound = NV_TRUE;
         remap = (cookie.dmac_laddress != nv_kva_to_phys(kva));
     }
 
-    if (!nv_dma_probe_release(&h, &acc, bound))
+    if (!nv_dma_probe_release(&h, &acc, bind_result))
     {
         cmn_err(CE_WARN, "nvidia: DMA remap probe unbind failed; "
             "retaining its backing page");

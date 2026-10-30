@@ -24,9 +24,11 @@
 /* A failed unbind leaves the DMA memory allocated for the life of the boot. */
 static NvBool
 nv_dma_probe_release(ddi_dma_handle_t *hp, ddi_acc_handle_t *ap,
-    NvBool bound)
+    int bind_result)
 {
-    if (bound && ddi_dma_unbind_handle(*hp) != DDI_SUCCESS)
+    if ((bind_result == DDI_DMA_MAPPED ||
+        bind_result == DDI_DMA_PARTIAL_MAP) &&
+        ddi_dma_unbind_handle(*hp) != DDI_SUCCESS)
         return NV_FALSE;
 
     ddi_dma_mem_free(ap);

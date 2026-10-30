@@ -246,27 +246,27 @@ nvos_free_alloc(nv_illumos_alloc_t *at)
 }
 
 static void
+nv_dma_chunk_retained(nv_dma_chunk_t *c)
+{
+    cmn_err(CE_WARN, "nvidia: DMA unbind failed for %p length %lu; "
+        "retaining backing memory", (void *)c->kva,
+        (unsigned long)c->len);
+}
+
+static void
 nv_free_dma_chunks(nv_illumos_alloc_t *at)
 {
-    NvU32 i;
+    uint_t retained_count;
+    NvU64 retained_bytes;
 
     if (at->kva != NULL && at->num_chunks > 1)
         nv_kunmap_phys(at->kva, at->num_pages);
     at->kva = NULL;
 
-    for (i = 0; i < at->num_chunks; i++)
-    {
-        nv_dma_chunk_t *c = &at->chunks[i];
-
-        if (!nv_dma_release_chunk(c))
-        {
-            atomic_inc_64(&nv_identity_dma_retained_chunks);
-            atomic_add_64(&nv_identity_dma_retained_bytes, c->len);
-            cmn_err(CE_WARN, "nvidia: DMA unbind failed for %p length %lu; "
-                "retaining backing memory", (void *)c->kva,
-                (unsigned long)c->len);
-        }
-    }
+    nv_dma_release_chunks(at->chunks, at->num_chunks, nv_dma_chunk_retained,
+        &retained_count, &retained_bytes);
+    atomic_add_64(&nv_identity_dma_retained_chunks, retained_count);
+    atomic_add_64(&nv_identity_dma_retained_bytes, retained_bytes);
 
     if (at->chunks != NULL)
         kmem_free(at->chunks, at->num_chunks * sizeof (nv_dma_chunk_t));

@@ -14,6 +14,9 @@ typedef void *ddi_acc_handle_t;
 #define NV_TRUE 1
 #define NV_FALSE 0
 #define DDI_SUCCESS 0
+#define DDI_DMA_MAPPED 1
+#define DDI_DMA_PARTIAL_MAP 2
+#define DDI_DMA_NOMAPPING 3
 
 static int unbind_result;
 static int unbind_calls;
@@ -63,13 +66,13 @@ main(void)
 
     reset_counts();
     unbind_result = -1;
-    assert(nv_dma_probe_release(&h, &acc, NV_TRUE) == NV_FALSE);
+    assert(nv_dma_probe_release(&h, &acc, DDI_DMA_MAPPED) == NV_FALSE);
     assert(h != NULL && acc != NULL);
     assert(unbind_calls == 1 && mem_free_calls == 0 &&
         handle_free_calls == 0);
 
     reset_counts();
-    assert(nv_dma_probe_release(&h, &acc, NV_TRUE) == NV_TRUE);
+    assert(nv_dma_probe_release(&h, &acc, DDI_DMA_MAPPED) == NV_TRUE);
     assert(h == NULL && acc == NULL);
     assert(unbind_calls == 1 && mem_free_calls == 1 &&
         handle_free_calls == 1);
@@ -77,8 +80,16 @@ main(void)
     h = (void *)(uintptr_t)0x1234;
     acc = (void *)(uintptr_t)0x5678;
     reset_counts();
-    assert(nv_dma_probe_release(&h, &acc, NV_FALSE) == NV_TRUE);
+    assert(nv_dma_probe_release(&h, &acc, DDI_DMA_NOMAPPING) == NV_TRUE);
     assert(unbind_calls == 0 && mem_free_calls == 1 &&
         handle_free_calls == 1);
+
+    h = (void *)(uintptr_t)0x1234;
+    acc = (void *)(uintptr_t)0x5678;
+    reset_counts();
+    unbind_result = -1;
+    assert(nv_dma_probe_release(&h, &acc, DDI_DMA_PARTIAL_MAP) == NV_FALSE);
+    assert(unbind_calls == 1 && mem_free_calls == 0 &&
+        handle_free_calls == 0);
     return 0;
 }

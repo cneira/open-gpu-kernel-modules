@@ -44,14 +44,20 @@ typedef struct nv_dma_chunk {
 } nv_dma_chunk_t;
 
 static ddi_dma_impl_t impl;
+static ddi_dma_impl_t impl2;
 static ddi_dma_cookie_t cookies[3];
 static uint_t ncookies;
 static uint_t next_cookie;
 static int bind_result;
 static int unbind_result;
+static int unbind_result2;
 static int unbind_calls;
 static int mem_free_calls;
 static int handle_free_calls;
+static int retained_calls;
+static nv_dma_chunk_t *retained_chunk;
+static char events[16];
+static int event_count;
 
 static NvU64
 nv_kva_to_phys(caddr_t kva)
@@ -86,24 +92,28 @@ ddi_dma_nextcookie(ddi_dma_handle_t handle, ddi_dma_cookie_t *cookie)
 static int
 ddi_dma_unbind_handle(ddi_dma_handle_t handle)
 {
-    assert(handle == &impl);
+    assert(handle == &impl || handle == &impl2);
     unbind_calls++;
-    return unbind_result;
+    events[event_count++] = 'U';
+    return handle == &impl ? unbind_result : unbind_result2;
 }
 
 static void
 ddi_dma_mem_free(ddi_acc_handle_t *acc)
 {
-    assert(*acc == (void *)(uintptr_t)0x1234);
+    assert(*acc == (void *)(uintptr_t)0x1234 ||
+        *acc == (void *)(uintptr_t)0x5678);
     mem_free_calls++;
+    events[event_count++] = 'M';
     *acc = NULL;
 }
 
 static void
 ddi_dma_free_handle(ddi_dma_handle_t *handle)
 {
-    assert(*handle == &impl);
+    assert(*handle == &impl || *handle == &impl2);
     handle_free_calls++;
+    events[event_count++] = 'H';
     *handle = NULL;
 }
 
@@ -126,16 +136,31 @@ new_chunk(void)
     impl.dmai_rflags = DMP_NOSYNC;
     bind_result = DDI_DMA_MAPPED;
     unbind_result = DDI_SUCCESS;
+    unbind_result2 = DDI_SUCCESS;
     unbind_calls = 0;
     mem_free_calls = 0;
     handle_free_calls = 0;
+    retained_calls = 0;
+    retained_chunk = NULL;
+    event_count = 0;
     return chunk;
+}
+
+static void
+record_retained(nv_dma_chunk_t *c)
+{
+    retained_calls++;
+    retained_chunk = c;
+    events[event_count++] = 'R';
 }
 
 int
 main(void)
 {
     nv_dma_chunk_t chunk = new_chunk();
+    nv_dma_chunk_t chunks[3];
+    uint_t retained_count;
+    NvU64 retained_bytes;
 
     assert(nv_dma_identity_bind_chunk(&chunk, NULL) == NV_TRUE);
     assert(chunk.bound == NV_TRUE);
@@ -195,6 +220,25 @@ main(void)
     assert(chunk.bound == NV_TRUE);
     assert(nv_dma_release_chunk(&chunk) == NV_FALSE);
     assert(mem_free_calls == 0 && handle_free_calls == 0);
+
+    chunks[0] = new_chunk();
+    chunks[0].bound = NV_TRUE;
+    chunks[1] = chunks[0];
+    chunks[1].dma_handle = &impl2;
+    chunks[1].acc_handle = (void *)(uintptr_t)0x5678;
+    chunks[2] = (nv_dma_chunk_t){ 0 };
+    unbind_result2 = -1;
+    nv_dma_release_chunks(chunks, 3, record_retained,
+        &retained_count, &retained_bytes);
+    assert(chunks[0].dma_handle == NULL && chunks[0].acc_handle == NULL);
+    assert(chunks[1].dma_handle == &impl2 &&
+        chunks[1].acc_handle == (void *)(uintptr_t)0x5678);
+    assert(chunks[2].dma_handle == NULL && chunks[2].acc_handle == NULL);
+    assert(unbind_calls == 2 && mem_free_calls == 1 &&
+        handle_free_calls == 1);
+    assert(retained_calls == 1 && retained_chunk == &chunks[1]);
+    assert(retained_count == 1 && retained_bytes == 8192);
+    assert(event_count == 5 && memcmp(events, "UMHUR", 5) == 0);
 
     return 0;
 }
