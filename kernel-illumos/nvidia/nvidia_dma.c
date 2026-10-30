@@ -29,6 +29,7 @@
 #include "nv-illumos.h"
 #include "nv-reg.h"
 #include "nvidia_mem.h"
+#include "nvidia_dma_probe_impl.h"
 
 #include <sys/vmem.h>
 #include <sys/vmsystm.h>
@@ -69,6 +70,7 @@ nv_dma_detect_remap(dev_info_t *dip)
     size_t len;
     uint_t ccount;
     NvBool remap = NV_TRUE;
+    NvBool bound = NV_FALSE;
 
     nv_dma_attr_init(&attr, UINT64_MAX, MMU_PAGESIZE, 1);
 
@@ -86,12 +88,16 @@ nv_dma_detect_remap(dev_info_t *dip)
             DDI_DMA_RDWR | DDI_DMA_CONSISTENT, DDI_DMA_SLEEP, NULL,
             &cookie, &ccount) == DDI_DMA_MAPPED)
     {
+        bound = NV_TRUE;
         remap = (cookie.dmac_laddress != nv_kva_to_phys(kva));
-        (void) ddi_dma_unbind_handle(h);
     }
 
-    ddi_dma_mem_free(&acc);
-    ddi_dma_free_handle(&h);
+    if (!nv_dma_probe_release(&h, &acc, bound))
+    {
+        cmn_err(CE_WARN, "nvidia: DMA remap probe unbind failed; "
+            "retaining its backing page");
+        return NV_TRUE;
+    }
     return remap;
 }
 

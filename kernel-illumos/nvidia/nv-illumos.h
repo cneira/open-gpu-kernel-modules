@@ -190,6 +190,7 @@ typedef struct nv_dma_chunk {
     ddi_acc_handle_t    acc_handle;
     caddr_t             kva;
     size_t              len;
+    NvBool              bound;
 } nv_dma_chunk_t;
 
 typedef struct nv_illumos_state_s nv_illumos_state_t;

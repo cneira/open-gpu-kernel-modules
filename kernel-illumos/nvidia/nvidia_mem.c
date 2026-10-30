@@ -49,6 +49,13 @@
 #include <vm/seg_kmem.h>
 #include <vm/page.h>
 
+#include "nvidia_mem_dma_impl.h"
+
+/* Inspect with mdb to confirm the experimental bind path was exercised. */
+volatile uint64_t nv_identity_dma_bind_count;
+volatile uint64_t nv_identity_dma_retained_chunks;
+volatile uint64_t nv_identity_dma_retained_bytes;
+
 NvU32 nv_dma_remap_peer_mmio = NV_DMA_REMAP_PEER_MMIO_ENABLE;
 
 const ddi_device_acc_attr_t nv_sysmem_acc_attr = {
@@ -250,10 +257,14 @@ nv_free_dma_chunks(nv_illumos_alloc_t *at)
     {
         nv_dma_chunk_t *c = &at->chunks[i];
 
-        if (c->acc_handle != NULL)
-            ddi_dma_mem_free(&c->acc_handle);
-        if (c->dma_handle != NULL)
-            ddi_dma_free_handle(&c->dma_handle);
+        if (!nv_dma_release_chunk(c))
+        {
+            atomic_inc_64(&nv_identity_dma_retained_chunks);
+            atomic_add_64(&nv_identity_dma_retained_bytes, c->len);
+            cmn_err(CE_WARN, "nvidia: DMA unbind failed for %p length %lu; "
+                "retaining backing memory", (void *)c->kva,
+                (unsigned long)c->len);
+        }
     }
 
     if (at->chunks != NULL)
@@ -278,6 +289,9 @@ nv_alloc_dma_chunks(nv_state_t *nv, nv_illumos_alloc_t *at, NvU64 chunk_size)
     NvU64 page = 0;
     NvU32 nchunks, i;
     NvBool single;
+    NvBool bind_identity = nv != NULL && !(nv->flags & NV_FLAG_CONTROL) &&
+        !NV_GET_NVIS(nv)->dma_remap;
+    NV_STATUS status = NV_ERR_NO_MEMORY;
 
     if (at->dip == NULL)
         return NV_ERR_INVALID_STATE;
@@ -333,6 +347,21 @@ nv_alloc_dma_chunks(nv_state_t *nv, nv_illumos_alloc_t *at, NvU64 chunk_size)
             goto fail;
 
         c->len = (size_t)len;
+        if (real_len < c->len)
+        {
+            status = NV_ERR_OPERATING_SYSTEM;
+            goto fail;
+        }
+
+        if (bind_identity)
+        {
+            if (!nv_dma_identity_bind_chunk(c, waitfp))
+            {
+                status = NV_ERR_OPERATING_SYSTEM;
+                goto fail;
+            }
+            atomic_inc_64(&nv_identity_dma_bind_count);
+        }
 
         if (at->flags.zeroed)
             bzero(c->kva, c->len);
@@ -368,7 +397,7 @@ nv_alloc_dma_chunks(nv_state_t *nv, nv_illumos_alloc_t *at, NvU64 chunk_size)
 
 fail:
     nv_free_dma_chunks(at);
-    return NV_ERR_NO_MEMORY;
+    return status;
 }
 
 static void
