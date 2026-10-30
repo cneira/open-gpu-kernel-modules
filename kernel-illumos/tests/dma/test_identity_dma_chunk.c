@@ -55,7 +55,7 @@ static int unbind_calls;
 static int mem_free_calls;
 static int handle_free_calls;
 static int retained_calls;
-static nv_dma_chunk_t *retained_chunk;
+static int retained_second;
 static char events[16];
 static int event_count;
 
@@ -141,7 +141,7 @@ new_chunk(void)
     mem_free_calls = 0;
     handle_free_calls = 0;
     retained_calls = 0;
-    retained_chunk = NULL;
+    retained_second = 0;
     event_count = 0;
     return chunk;
 }
@@ -150,7 +150,7 @@ static void
 record_retained(nv_dma_chunk_t *c)
 {
     retained_calls++;
-    retained_chunk = c;
+    retained_second = c->dma_handle == &impl2;
     events[event_count++] = 'R';
 }
 
@@ -236,7 +236,7 @@ main(void)
     assert(chunks[2].dma_handle == NULL && chunks[2].acc_handle == NULL);
     assert(unbind_calls == 2 && mem_free_calls == 1 &&
         handle_free_calls == 1);
-    assert(retained_calls == 1 && retained_chunk == &chunks[1]);
+    assert(retained_calls == 1 && retained_second);
     assert(retained_count == 1 && retained_bytes == 8192);
     assert(event_count == 5 && memcmp(events, "UMHUR", 5) == 0);
 
