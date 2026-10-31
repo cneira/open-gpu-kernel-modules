@@ -7,10 +7,10 @@
 #define _NVIDIA_MEM_CACHE_POLICY_H
 
 /*
- * Diagnostic policy for driver-owned DMA RAM. On illumos x86, KPM maps RAM
- * through a cached direct-map alias. DDI's WC allocation leaves that alias
- * cached, while the DDI and user mappings are WC. Keep all three mappings
- * cached until the cache-type alias hypothesis is tested on real hardware.
+ * Experimental policy for driver-owned DMA RAM. On illumos x86, KPM maps RAM
+ * through a cached direct-map alias. DDI's WC allocation left that alias
+ * cached while the DDI and user mappings were WC on the tested host. Use a
+ * consistent cached type while the corruption hypothesis is investigated.
  *
  * Do not use this for BARs, peer I/O, or aliased physical pages: the driver
  * does not own those pages or their other mappings.
