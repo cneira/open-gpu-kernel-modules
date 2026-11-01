@@ -44,5 +44,17 @@
 
 ### Task 3: Integration and handoff
 
-- [ ] Build the illumos driver modules in the existing build zone and check module linkage if the toolchain is available.
-- [ ] Record remaining live validation in `sno-7vl`, commit and push the patch branch.
+- [x] Build the illumos driver modules in the existing build zone and check module linkage.
+- [x] Record remaining live validation in `sno-7vl`, commit and push the patch branch.
+
+## Build evidence
+
+Commit `2b54ee3` built in `b01slow` against the headers for Saruman's
+`joyent_20261028T004857Z` kernel. The source archive SHA-256 was
+`2d01bdb9cebff1534a629d4503dc6dbc636b5d3f18a5bac88ae52ffc1c87a2a7`.
+All four modules linked. The crypto test passed 7,394 checks with zero
+failures. `elfdump -r` found zero nondebug `R_AMD64_32` relocations in each
+module. The candidate `nvidia_uvm.kmod` SHA-256 is
+`6c8ea80ed3c3b817b47768a43d0e7e70592adefa3ea2ba2545aa504172655102`.
+Build logs and objects are confined to `/var/tmp/sno-7vl-2b54ee3` in
+`b01slow`; no production module was replaced.

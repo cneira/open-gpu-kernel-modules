@@ -197,6 +197,13 @@ int main(void)
     stop_calls = drain_calls = 0;
     stop_result = drain_result = NV_ERR_OPERATING_SYSTEM;
     assert(atomic_read(&live_vs.tracked_imports_blocked) == 0);
+    map_result = NV_ERR_OPERATING_SYSTEM;
+    assert(uvm_ext_gpu_import_revoke_checked(&live_vs, &live_target) ==
+           NV_ERR_OPERATING_SYSTEM);
+    assert(!live_map.freed && live_target.ref_count == 1);
+    assert(!live_vs.channels_revoked && stop_calls == 0 && drain_calls == 0);
+
+    map_result = NV_OK;
     assert(uvm_ext_gpu_import_revoke_checked(&live_vs, &live_target) == NV_OK);
     assert(live_map.freed && live_target.ref_count == 0);
     assert(!live_vs.channels_revoked && stop_calls == 0 && drain_calls == 0);
