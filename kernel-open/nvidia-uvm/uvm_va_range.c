@@ -612,8 +612,10 @@ static NV_STATUS uvm_va_range_destroy_external(uvm_va_range_external_t *external
             uvm_mutex_lock(&tree->lock);
             tracked = uvm_ext_gpu_range_has_tracked_import(external_range, gpu);
             uvm_mutex_unlock(&tree->lock);
-            if (tracked)
+            if (tracked) {
+                external_range->deferred_free_pending = true;
                 return NV_ERR_INVALID_STATE;
+            }
         }
     }
 
@@ -768,6 +770,8 @@ NV_STATUS uvm_va_range_destroy(uvm_va_range_t *va_range,
     }
     return NV_OK;
 }
+
+#include "uvm_va_range_deferred_external_impl.h"
 
 void uvm_va_range_zombify(uvm_va_range_managed_t *managed_range)
 {

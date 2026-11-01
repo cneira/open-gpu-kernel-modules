@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2026 Carlos Neira
+ * SPDX-FileCopyrightText: Copyright 2026 Edgecast Cloud LLC
  * SPDX-License-Identifier: MIT
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -74,6 +74,10 @@ static void uvm_va_space_up_read_rm(uvm_va_space_t *vs)
 {
     assert(vs->locked);
     vs->locked = 0;
+}
+static void uvm_va_space_free_deferred_external_ranges(uvm_va_space_t *vs)
+{
+    assert(!vs->locked);
 }
 static int atomic_read(int *value) { return *value; }
 static NV_STATUS uvm_va_space_revoke_all_user_channels_checked(uvm_va_space_t *vs)

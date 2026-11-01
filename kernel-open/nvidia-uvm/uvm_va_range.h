@@ -359,6 +359,10 @@ struct uvm_va_range_external_struct
     // Dynamically allocated page mask allocated in
     // uvm_va_range_create_external() and used and freed in uvm_free().
     uvm_processor_mask_t *retained_mask;
+
+    // UVM_FREE could not complete while a checked import still owned a map.
+    // Protected by the VA space writer lock.
+    bool deferred_free_pending;
 };
 
 struct uvm_va_range_dma_buf_struct
@@ -656,6 +660,10 @@ NV_STATUS uvm_va_range_create_semaphore_pool(uvm_va_space_t *va_space,
 // processing by uvm_deferred_free_object_list.
 NV_STATUS uvm_va_range_destroy(uvm_va_range_t *va_range,
                                struct list_head *deferred_free_list);
+
+// Complete a failed UVM_FREE after checked import teardown removed the maps.
+// Acquires the VA space writer lock and only removes empty deferred ranges.
+void uvm_va_space_free_deferred_external_ranges(uvm_va_space_t *va_space);
 
 void uvm_va_range_zombify(uvm_va_range_managed_t *managed_range);
 

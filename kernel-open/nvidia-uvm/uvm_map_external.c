@@ -1709,6 +1709,9 @@ static NV_STATUS uvm_unmap_external(uvm_va_space_t *va_space,
 out:
     uvm_va_space_up_read_rm(va_space);
 
+    if (uvm_import_tracking_enabled())
+        uvm_va_space_free_deferred_external_ranges(va_space);
+
     if (!list_empty(&deferred_free_list)) {
         uvm_deferred_free_object_list(&deferred_free_list);
         uvm_gpu_release(gpu);

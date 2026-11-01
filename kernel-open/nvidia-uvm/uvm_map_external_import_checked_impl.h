@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2026 Carlos Neira
+ * SPDX-FileCopyrightText: Copyright 2026 Edgecast Cloud LLC
  * SPDX-License-Identifier: MIT
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -103,5 +103,6 @@ uvm_ext_gpu_import_revoke_checked(uvm_va_space_t *va_space,
     status = NV_ERR_INVALID_STATE;
 out:
     uvm_va_space_up_read_rm(va_space);
+    uvm_va_space_free_deferred_external_ranges(va_space);
     return status;
 }
