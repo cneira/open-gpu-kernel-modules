@@ -58,3 +58,12 @@ module. The candidate `nvidia_uvm.kmod` SHA-256 is
 `6c8ea80ed3c3b817b47768a43d0e7e70592adefa3ea2ba2545aa504172655102`.
 Build logs and objects are confined to `/var/tmp/sno-7vl-2b54ee3` in
 `b01slow`; no production module was replaced.
+
+The review bundle is `/tmp/smartos-nvidia-615.71.09-sno-7vl-2b54ee3.tar.gz`
+on the workstation, SHA-256
+`74c3861519b7dc9c866f5296c66062f670733acb272c3df0437ce03c5d735587`.
+Its manifest pins driver `2b54ee3`, illumos
+`860a3aca2c761b58119d369f18efb837b9331747`, kernel
+`joyent_20261028T004857Z`, and PCI device `2803`. The extracted UVM
+module hash matches the build output. Live CUDA and zone-stop validation
+remains open in `sno-7vl`.
