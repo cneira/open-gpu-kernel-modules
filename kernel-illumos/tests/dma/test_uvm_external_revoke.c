@@ -64,6 +64,9 @@ static int tracker_deinits;
 static int l2_calls;
 static int clear_calls;
 static int drain_calls;
+static int event_index;
+static int clear_event;
+static int l2_event;
 
 static NV_STATUS
 uvm_tracker_wait(uvm_tracker_t *tracker)
@@ -86,6 +89,7 @@ uvm_mmu_l2_invalidate(uvm_gpu_t *gpu, uvm_aperture_t aperture)
     (void)gpu;
     assert(aperture == UVM_APERTURE_SYS);
     l2_calls++;
+    l2_event = ++event_index;
     return l2_status;
 }
 
@@ -103,6 +107,7 @@ uvm_page_table_range_vec_clear_ptes(uvm_page_table_range_vec_t *vec,
 {
     assert(vec->ranges && membar == 1);
     clear_calls++;
+    clear_event = ++event_index;
     return clear_status;
 }
 
@@ -144,24 +149,26 @@ main(void)
     l2_status = NV_ERR_OPERATING_SYSTEM;
     assert(uvm_ext_gpu_map_revoke_ptes_checked(&range, &map) ==
            NV_ERR_OPERATING_SYSTEM);
-    assert(l2_calls == 1 && clear_calls == 0 && tracker_deinits == 0);
+    assert(l2_calls == 1 && clear_calls == 1 && tracker_deinits == 0);
+    assert(clear_event < l2_event);
 
     l2_status = NV_OK;
     clear_status = NV_ERR_OPERATING_SYSTEM;
     assert(uvm_ext_gpu_map_revoke_ptes_checked(&range, &map) ==
            NV_ERR_OPERATING_SYSTEM);
-    assert(clear_calls == 1 && drain_calls == 0 && tracker_deinits == 0);
+    assert(clear_calls == 2 && l2_calls == 1 && drain_calls == 0 && tracker_deinits == 0);
 
     clear_status = NV_OK;
     drain_status = NV_ERR_OPERATING_SYSTEM;
     assert(uvm_ext_gpu_map_revoke_ptes_checked(&range, &map) ==
            NV_ERR_OPERATING_SYSTEM);
-    assert(clear_calls == 2 && drain_calls == 1 && map.pt_release_queued);
+    assert(clear_calls == 3 && l2_calls == 2 && drain_calls == 1 && map.pt_release_queued);
+    assert(clear_event < l2_event);
     assert(tracker_deinits == 0 && map.mem_handle == &handle);
 
     drain_status = NV_OK;
     assert(uvm_ext_gpu_map_revoke_ptes_checked(&range, &map) == NV_OK);
-    assert(clear_calls == 2 && drain_calls == 2);
+    assert(clear_calls == 3 && drain_calls == 2);
     assert(!map.pt_release_queued && !map.base.pt_range_vec.ranges);
     assert(tracker_deinits == 1 && map.mem_handle == &handle);
 

@@ -589,6 +589,7 @@ void uvm_va_space_destroy(uvm_va_space_t *va_space)
 
 #if defined(NV_SUNOS)
     /* Normal file close may have no CPU unmap callback to start revocation. */
+    atomic_set(&va_space->tracked_imports_blocked, 1);
     if (uvm_va_space_has_tracked_imports(va_space)) {
         import_status = uvm_va_space_revoke_tracked_imports_checked(va_space);
         if (import_status != NV_OK && import_status != NV_ERR_BUSY_RETRY)

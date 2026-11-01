@@ -41,15 +41,6 @@ uvm_ext_gpu_map_revoke_ptes_checked(uvm_va_range_external_t *external_range,
         if (status != NV_OK)
             return status;
 
-        if (ext_gpu_map->need_l2_invalidate_at_unmap) {
-            uvm_aperture_t aperture = ext_gpu_map->is_sysmem ?
-                UVM_APERTURE_SYS : UVM_APERTURE_PEER(0);
-
-            status = uvm_mmu_l2_invalidate(ext_gpu_map->base.gpu, aperture);
-            if (status != NV_OK)
-                return status;
-        }
-
         if (ext_gpu_map->base.pt_range_vec.ranges) {
             uvm_membar_t membar = va_range_downgrade_membar(
                 &external_range->va_range, ext_gpu_map);
@@ -59,6 +50,18 @@ uvm_ext_gpu_map_revoke_ptes_checked(uvm_va_range_external_t *external_range,
             if (status != NV_OK)
                 return status;
         }
+
+        /* The completed TLB membar orders old-translated GPU accesses before
+         * the L2 flush. A live channel cannot repopulate this mapping now. */
+        if (ext_gpu_map->need_l2_invalidate_at_unmap) {
+            uvm_aperture_t aperture = ext_gpu_map->is_sysmem ?
+                UVM_APERTURE_SYS : UVM_APERTURE_PEER(0);
+
+            status = uvm_mmu_l2_invalidate(ext_gpu_map->base.gpu, aperture);
+            if (status != NV_OK)
+                return status;
+        }
+
     }
 
     status = uvm_page_table_range_vec_deinit_checked(

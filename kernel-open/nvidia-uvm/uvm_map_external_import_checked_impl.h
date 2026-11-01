@@ -33,20 +33,32 @@ uvm_ext_gpu_import_revoke_checked(uvm_va_space_t *va_space,
     if (va_space == NULL || target == NULL)
         return NV_ERR_INVALID_STATE;
 
-    /* Serializes against publication of a new external map in this VA space. */
+    /*
+     * An ordinary host unmap has the same lifetime contract as a targeted
+     * UVM_UNMAP_EXTERNAL: retire this import's PTEs and RM duplicate while
+     * leaving unrelated user channels running. The checked PTE path waits for
+     * the TLB membar before the pin can be released.
+     *
+     * VA-space shutdown still needs the full channel and fault-worker drain.
+     * Keep the VA read lock across the live scan so shutdown cannot begin
+     * between this decision and the checked destroy.
+     */
     uvm_va_space_down_read_rm(va_space);
-    status = uvm_va_space_revoke_all_user_channels_checked(va_space);
-    uvm_va_space_up_read_rm(va_space);
-    if (status != NV_OK)
-        return status;
+    if (va_space->disallow_new_registers ||
+        atomic_read(&va_space->tracked_imports_blocked)) {
+        status = uvm_va_space_revoke_all_user_channels_checked(va_space);
+        uvm_va_space_up_read_rm(va_space);
+        if (status != NV_OK)
+            return status;
 
-    /* Fault workers need the VA writer for lookup removal, then no VA lock
-     * while queued work drains. Revocation is sticky across this lock gap. */
-    status = uvm_va_space_quiesce_user_faults_checked(va_space);
-    if (status != NV_OK)
-        return status;
+        /* Fault workers need the VA writer for lookup removal, then no VA
+         * lock while queued work drains. Revocation is sticky across this gap. */
+        status = uvm_va_space_quiesce_user_faults_checked(va_space);
+        if (status != NV_OK)
+            return status;
 
-    uvm_va_space_down_read_rm(va_space);
+        uvm_va_space_down_read_rm(va_space);
+    }
 
     uvm_for_each_va_range(va_range, va_space) {
         uvm_va_range_external_t *external_range;

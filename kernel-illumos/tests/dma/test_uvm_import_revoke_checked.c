@@ -53,6 +53,9 @@ typedef struct {
     int locked;
     uvm_gpu_t *gpu;
     uvm_va_range_t *first;
+    bool disallow_new_registers;
+    int tracked_imports_blocked;
+    bool channels_revoked;
 } uvm_va_space_t;
 
 static NV_STATUS stop_result;
@@ -72,15 +75,18 @@ static void uvm_va_space_up_read_rm(uvm_va_space_t *vs)
     assert(vs->locked);
     vs->locked = 0;
 }
+static int atomic_read(int *value) { return *value; }
 static NV_STATUS uvm_va_space_revoke_all_user_channels_checked(uvm_va_space_t *vs)
 {
     assert(vs->locked);
     ++stop_calls;
+    if (stop_result == NV_OK)
+        vs->channels_revoked = true;
     return stop_result;
 }
 static NV_STATUS uvm_va_space_quiesce_user_faults_checked(uvm_va_space_t *vs)
 {
-    assert(!vs->locked && stop_calls > 0);
+    assert(!vs->locked && vs->channels_revoked);
     ++drain_calls;
     return drain_result;
 }
@@ -114,7 +120,7 @@ static NV_STATUS uvm_ext_gpu_map_destroy_checked(uvm_va_range_external_t *r,
     uvm_ext_gpu_range_tree_t *tree = &r->trees[0];
     uvm_ext_gpu_map_t **slot = &tree->head;
 
-    assert(tree->lock && stop_calls > 0 && drain_calls > 0 && drain_result == NV_OK);
+    assert(tree->lock);
     ++destroy_calls;
     if (map_result != NV_OK)
         return map_result;
@@ -144,7 +150,20 @@ int main(void)
     uvm_ext_gpu_map_t other = {&unrelated, &second, false};
     uvm_ext_gpu_map_t first = {&target, &other, false};
     uvm_va_range_external_t range = {{UVM_VA_RANGE_TYPE_EXTERNAL, {0, 4095}, NULL}, {{0, &first}}};
-    uvm_va_space_t vs = {0, &gpu, &range.va_range};
+    uvm_va_space_t vs = {.gpu = &gpu, .first = &range.va_range};
+    uvm_ext_gpu_mem_handle live_target = {1};
+    uvm_ext_gpu_map_t live_map = {&live_target, NULL, false};
+    uvm_va_range_external_t live_range = {{UVM_VA_RANGE_TYPE_EXTERNAL, {0, 4095}, NULL}, {{0, &live_map}}};
+    uvm_va_space_t live_vs = {.gpu = &gpu, .first = &live_range.va_range};
+    uvm_ext_gpu_mem_handle release_target = {1};
+    uvm_ext_gpu_map_t release_map = {&release_target, NULL, false};
+    uvm_va_range_external_t release_range = {{UVM_VA_RANGE_TYPE_EXTERNAL, {0, 4095}, NULL}, {{0, &release_map}}};
+    uvm_va_space_t release_vs = {
+        .gpu = &gpu, .first = &release_range.va_range,
+        .tracked_imports_blocked = 1,
+    };
+
+    vs.disallow_new_registers = true;
 
     stop_result = NV_ERR_OPERATING_SYSTEM;
     assert(uvm_ext_gpu_import_revoke_checked(&vs, &target) == NV_ERR_OPERATING_SYSTEM);
@@ -173,5 +192,20 @@ int main(void)
     range.trees[0].head = &first;
     assert(uvm_ext_gpu_import_revoke_checked(&vs, &target) == NV_ERR_INVALID_STATE);
     assert(first.freed && target.ref_count == 1);
+
+    /* Releasing one live host mapping must leave unrelated CUDA channels usable. */
+    stop_calls = drain_calls = 0;
+    stop_result = drain_result = NV_ERR_OPERATING_SYSTEM;
+    assert(atomic_read(&live_vs.tracked_imports_blocked) == 0);
+    assert(uvm_ext_gpu_import_revoke_checked(&live_vs, &live_target) == NV_OK);
+    assert(live_map.freed && live_target.ref_count == 0);
+    assert(!live_vs.channels_revoked && stop_calls == 0 && drain_calls == 0);
+
+    /* File release still uses the full channel and fault-worker barrier. */
+    stop_result = drain_result = NV_OK;
+    assert(uvm_ext_gpu_import_revoke_checked(&release_vs, &release_target) == NV_OK);
+    assert(release_map.freed && release_target.ref_count == 0);
+    assert(release_vs.channels_revoked && stop_calls == 1 && drain_calls == 1);
+
     return 0;
 }
