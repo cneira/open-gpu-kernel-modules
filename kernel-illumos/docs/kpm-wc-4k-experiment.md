@@ -58,3 +58,31 @@ Before another reboot, back up the current module, take a `slow/boot` ZFS
 snapshot, and stage the candidate with exact hashes. Do not reboot without
 the operator's explicit approval. Restore the backed-up module if this
 experiment fails; that restoration also requires an approved reboot to load.
+
+## Result: do not deploy this driver-only experiment
+
+The approved boot loaded this diagnostic, but the first idle 30-frame
+NVDEC/NVENC control panicked Saruman at 2026-11-02 16:53:52 UTC. The saved
+panic is `remap bits changed: old_pte=0xa071523,
+pte=0x800000000a0714f3`. The only changed bit outside native
+`PT_REMAP_BITS` is `PT_GLOBAL` (bit 8): it was present in the KPM entry and
+absent in the entry rebuilt by `hat_devload()`. Native `PT_IGNORE` is zero,
+and the loaded kernel's `mmu.pt_global` is zero under KPTI. The exact HAT
+implementation calls `x86pte_set()` before checking the remap bits, so this
+path writes the unsuitable PTE and then panics. The pageable H2D and pinned
+Qwen tests were not reached. This experiment establishes a driver-only
+remapping failure; it does not establish whether the original WB KPM alias
+causes stale CUDA uploads.
+
+The prior module and Qwen configuration are restored on disk. The failed
+module remains loaded until a separately approved recovery reboot. The
+compressed dump is `/slow/crash/vmdump.5`; `savecore -f` reported an
+incomplete dump and left an unreadable partial core. See the
+`sno-7vl-dtrace-20261101` installer report for raw logs.
+
+The next patch belongs in illumos HAT. It needs an explicit direct-map
+cache-attribute operation that preserves all non-cache PTE bits, including
+`PT_GLOBAL`, changes only the PAT/cache bits, performs cache and TLB
+maintenance, and safely demotes large KPM entries when changing only part
+of a large page. A generic `hat_devload()` remap and a blanket allowance to
+toggle `PT_GLOBAL` are not substitutes for that operation.
