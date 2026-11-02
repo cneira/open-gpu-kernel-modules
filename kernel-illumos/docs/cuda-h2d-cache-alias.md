@@ -14,10 +14,13 @@ direct-map alias during a failed transfer**. The causal root of the corrupted
 GPU bytes is therefore not proved.
 
 Branch `cuda-cache-alias`, commit `59aff836e17063792444c80349cc89536a89c799`,
-is an experimental driver-only correction. It chooses a consistent cacheable
-type for driver-owned RAM requested as WC. It does not require an LX-brand
-change. Do not merge it into the main driver branch solely on the passing
-Saruman tests: the performance cost and failure mechanism still need review.
+was an experimental driver-only correction. It chose a consistent cacheable
+type for driver-owned RAM requested as WC. A later differential test found
+that it broke the exact CUDA decode to HEVC NVENC control: the pre-policy
+`nvidia` module passed with the other boot modules unchanged. Branch
+`fix/sno-576-pre-policy` restores RM's requested cache type while retaining
+later UVM fixes. This restores the pre-policy behavior in source; it does
+not resolve the H2D corruption or pinned-host cleanup failures.
 
 ## Failure observed before the experiment
 
@@ -67,16 +70,15 @@ documents the distinct cached and WC allocation flags. These references
 explain why the mismatch deserves correction; they do not prove it caused
 the observed two-transfer lag.
 
-## Experimental correction
+## Historical experimental correction
 
-[`nv_sysmem_effective_cache_type()`](../nvidia/nvidia_mem_cache_policy.h)
-maps a WC request to `NV_MEMORY_CACHED` only at the `nv_alloc_pages()`
+Commit `59aff836` mapped a WC request to `NV_MEMORY_CACHED` only at the `nv_alloc_pages()`
 driver-owned RAM allocation boundary. The effective type then flows to the
 DDI allocation, kernel mapping, and LX user mapping. Other cache requests
 retain their original value. `nv_alias_pages()`, BARs, and peer I/O do not
-use this conversion. The [focused policy test](../tests/dma/test_sysmem_cache_policy.c)
-checks that scope. This patch trades WC write behavior for coherent cache
-attributes on this host; it may affect H2D upload throughput.
+use this conversion. That experiment traded WC write behavior for matching
+cache attributes on this host. Its test and policy helper were removed with
+the rollback.
 
 The exact-source `b01slow` native build against illumos
 `860a3aca2c761b58119d369f18efb837b9331747` and kernel
