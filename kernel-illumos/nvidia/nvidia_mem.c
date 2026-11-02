@@ -56,6 +56,7 @@
 
 /* Private x86 HAT interfaces from the matching illumos kernel. */
 extern caddr_t hat_kpm_pfn2va(pfn_t);
+extern int hat_kpm_prepare_cache(pfn_t);
 extern int hat_kpm_set_cache(pfn_t, uint_t, uint_t);
 
 NvU32 nv_dma_remap_peer_mmio = NV_DMA_REMAP_PEER_MMIO_ENABLE;
@@ -278,7 +279,7 @@ nv_kpm_wc_flush_all(void)
     kpreempt_enable();
 }
 
-/* Never try to install a 4 KiB PTE over a present KPM large-page entry. */
+/* Prepare 4 KiB KPM leaves before changing driver-owned WC pages. */
 static NvBool
 nv_kpm_wc_preflight(nv_illumos_alloc_t *at)
 {
@@ -288,9 +289,10 @@ nv_kpm_wc_preflight(nv_illumos_alloc_t *at)
     {
         pfn_t pfn = mmu_btop(at->page_table[i].phys_addr);
         caddr_t va = hat_kpm_pfn2va(pfn);
+        int error = hat_kpm_prepare_cache(pfn);
         ssize_t pagesize = hat_getpagesize(kas.a_hat, va);
 
-        if (pagesize != MMU_PAGESIZE)
+        if (error != 0 || pagesize != MMU_PAGESIZE)
         {
             if (pagesize > MMU_PAGESIZE)
                 atomic_inc_64(&nv_kpm_wc_skip_large);

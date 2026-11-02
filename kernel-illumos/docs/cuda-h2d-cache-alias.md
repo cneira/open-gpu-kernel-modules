@@ -121,3 +121,24 @@ output are in `smartos-nvidia-open-drivers-install` at
 `benchmarks/cuda-cache-alias-20261030/` (commit `3d0fa80`). The previous
 `nvidia` bootfs file is backed up on Saruman at
 `/slow/boot/nvidia-backups/20261028T004857Z/cache-alias-59aff83-20261030/nvidia.before`.
+
+## Paired 4 KiB KPM candidate, 2026-11-02
+
+The paired illumos PI `joyent_20261102T175509Z` and NVIDIA module
+`cc622d3b` loaded after the PI archive was correctly injected. A 30-frame
+CUDA decode to HEVC NVENC control passed. The fresh GGUF mmap async H2D
+integrity run still failed at iteration 49 with 64 bytes from two transfers
+earlier. `mdb -k` showed only one three-page WC remap and 11 large KPM skips.
+The failed allocation was skipped, so this candidate does not fix CUDA H2D
+or test whether KPM alias coherence is causal. See bead `sno-27t` and the
+installer report at `benchmarks/sno-7vl-dtrace-20261101/` (commit `bba5c00`).
+
+The next source draft adds `hat_kpm_prepare_cache()` to split only a large
+boot-created KPM leaf covering a driver-owned WC PFN. It prepares a child
+page table, copies the original leaf's attributes including `PT_GLOBAL`,
+atomically substitutes the parent PTE, and invalidates the old translation.
+It rejects later HAT-locked mappings, since those have a separate lock-count
+lifecycle. The driver calls it before the existing 4 KiB cache transition.
+This draft has passed local style and source-contract checks but has not
+been built into a kernel or tested on Saruman. The build host was offline
+when this note was updated; do not treat this as a verified fix.
