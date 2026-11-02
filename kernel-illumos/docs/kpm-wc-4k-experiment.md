@@ -21,11 +21,15 @@ allocation unchanged and count the skip. This diagnostic build must never
 attempt to overwrite a large KPM mapping: illumos `htable_create()` panics
 if it links a 4 KiB table over a present large-page entry.
 
-For eligible allocations, flush CPU caches on all CPUs before changing the
-KPM entries, then use `hat_devload()` to remap each KPM 4 KiB entry to WC.
-`HAT_PLAT_NOCACHE` prevents `hat_devload()` from forcing system RAM back to
-write-back; `HAT_MERGING_OK` selects WC via PAT. The same-PFN remap changes
-only permitted PTE bits, and the HAT path shoots down the kernel TLB. Keep
+The first driver-only implementation used `hat_devload()` for the transition.
+That implementation panicked before CUDA testing; see the result below. The
+revised implementation calls illumos `hat_kpm_set_cache()` to change only
+`PT_WRITETHRU`, `PT_NOCACHE`, and `PT_PAT_4K` in the existing PTE. The HAT
+checks the PFN and expected cache mode, atomically updates the PTE, and
+shoots down the TLB. The driver flushes CPU caches on all CPUs before and
+after a transition, and rolls back a partial WC conversion. If rollback or
+WB restoration fails, the driver retains the DMA allocation and its mappings
+for mdb diagnosis rather than releasing pages with uncertain cache state. Keep
 the allocation marked as remapped so its last-reference destruction flushes
 again and restores KPM write-back before `ddi_dma_mem_free()` releases pages.
 Do not touch BAR, peer, user-pinned, or alias allocations.
@@ -34,13 +38,12 @@ This is a guarded diagnostic, not a production cache policy. It uses a full
 CPU cache flush per transition and does not handle large KPM mappings. A
 measured skip on the CUDA staging allocation means this test is inconclusive
 and a small illumos HAT operation with safe large-page demotion is needed.
-The preflight assumes the KPM topology of allocated DMA pages stays stable
-through the remap. Restoration assumes the pre-existing KPM entry was
-write-back, as observed on Saruman; public HAT queries do not report its
-cache mode. The exact PI's `hat_i86.h` defines the private no-cache override
-as `0x100000`, which the external module uses without including that
-machine-dependent header. Verify these assumptions with mdb on the live
-candidate before accepting any CUDA result.
+The HAT rechecks the 4 KiB mapping and cache bits during each transition.
+It rejects a missing mapping, changed PFN, unexpected cache policy, or a
+large KPM mapping. The driver still requires an exact matching illumos
+kernel; the new HAT symbol is absent from the currently running PI. Verify
+the modified kernel and driver together with mdb before accepting any CUDA
+result. A large-page skip is inconclusive for the alias hypothesis.
 
 ## Acceptance and rollback
 
@@ -80,9 +83,13 @@ compressed dump is `/slow/crash/vmdump.5`; `savecore -f` reported an
 incomplete dump and left an unreadable partial core. See the
 `sno-7vl-dtrace-20261101` installer report for raw logs.
 
-The next patch belongs in illumos HAT. It needs an explicit direct-map
-cache-attribute operation that preserves all non-cache PTE bits, including
-`PT_GLOBAL`, changes only the PAT/cache bits, performs cache and TLB
-maintenance, and safely demotes large KPM entries when changing only part
-of a large page. A generic `hat_devload()` remap and a blanket allowance to
-toggle `PT_GLOBAL` are not substitutes for that operation.
+The follow-up patch adds that direct-map cache-attribute operation for
+existing 4 KiB mappings in illumos HAT and switches the driver to it. The
+HAT rejects large mappings; safe large-page demotion remains separate work.
+This follow-up has not booted or run CUDA/NVENC validation. The failed
+driver-only experiment must not be reused.
+
+The matching illumos source is branch `fix/sno-27t-kpm-memattr`, commit
+`8dcf80d15d`, based on the October PI's `860a3aca2c76`. A new illumos
+`unix`/PI build is required before loading this driver: the currently
+running kernel does not export `hat_kpm_set_cache`.

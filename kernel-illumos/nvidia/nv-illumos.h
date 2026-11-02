@@ -165,6 +165,7 @@ typedef struct nv_illumos_alloc_s {
         NvBool node         : 1;
         NvBool sgt          : 1;
         NvBool kpm_wc       : 1;
+        NvBool kpm_quarantine : 1;
     } flags;
     NvU32               cache_type;
     NvU32               num_pages;      /* in OS pages */
