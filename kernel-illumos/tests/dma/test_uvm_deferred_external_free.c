@@ -10,6 +10,7 @@
 
 typedef int NV_STATUS;
 #define NV_OK 0
+#define NV_ERR_INVALID_STATE 2
 #define UVM_VA_RANGE_TYPE_EXTERNAL 1
 #define UVM_VA_RANGE_TYPE_MANAGED 2
 
@@ -70,6 +71,11 @@ int main(void)
     uvm_va_range_external_t stale = {{UVM_VA_RANGE_TYPE_EXTERNAL, &still_mapped.va_range}, true, 0, false};
     uvm_va_space_t vs = {&stale.va_range, false};
     destroy_space = &vs;
+
+    /* UVM_FREE already requested removal: neither map API may reuse it. */
+    assert(uvm_va_range_external_map_status(&stale) == NV_ERR_INVALID_STATE);
+    assert(uvm_va_range_external_map_status(&still_mapped) == NV_ERR_INVALID_STATE);
+    assert(uvm_va_range_external_map_status(&unrelated) == NV_OK);
 
     uvm_va_space_free_deferred_external_ranges(&vs);
     assert(stale.freed);

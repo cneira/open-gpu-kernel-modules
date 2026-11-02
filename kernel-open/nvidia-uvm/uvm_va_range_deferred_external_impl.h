@@ -4,6 +4,11 @@
  */
 
 /* Included by uvm_va_range.c and the focused deferred-free test. */
+NV_STATUS uvm_va_range_external_map_status(const uvm_va_range_external_t *external_range)
+{
+    return external_range->deferred_free_pending ? NV_ERR_INVALID_STATE : NV_OK;
+}
+
 void uvm_va_space_free_deferred_external_ranges(uvm_va_space_t *va_space)
 {
     uvm_va_range_t *va_range, *next;

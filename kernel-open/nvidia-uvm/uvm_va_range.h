@@ -665,6 +665,10 @@ NV_STATUS uvm_va_range_destroy(uvm_va_range_t *va_range,
 // Acquires the VA space writer lock and only removes empty deferred ranges.
 void uvm_va_space_free_deferred_external_ranges(uvm_va_space_t *va_space);
 
+// Caller holds the VA space lock while checking whether an external range
+// remains available for new mappings after UVM_FREE was attempted.
+NV_STATUS uvm_va_range_external_map_status(const uvm_va_range_external_t *external_range);
+
 void uvm_va_range_zombify(uvm_va_range_managed_t *managed_range);
 
 NV_STATUS uvm_api_clean_up_zombie_resources(UVM_CLEAN_UP_ZOMBIE_RESOURCES_PARAMS *params, struct file *filp);

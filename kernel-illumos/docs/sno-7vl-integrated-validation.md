@@ -8,14 +8,12 @@ modules from different builds.
 
 ## Current status
 
-Commit `12a5c28` builds, but is not ready for live deployment or merge.
-The deferred external-range patch still permits ordinary and sparse external
-mapping into a range whose `UVM_FREE` is pending. Replacement mapping may
-remove the old map and fail before creating a new one, leaving the pending
-range in the VA tree; successful replacement retains the pending state.
-Block these mappings or implement safe cancellation, cover replacement
-failure with a regression test, then repeat the exact-kernel build and live
-acceptance sequence below. Keep bead `sno-7vl` open.
+The prior `12a5c28` build had a deferred-range remapping gap. The current
+branch rejects both ordinary and sparse mappings into a range whose
+`UVM_FREE` is pending, before either mapping path can remove the old map.
+The focused test covers pending and active range decisions. Rebuild this
+revision against the exact kernel, then run the live acceptance sequence
+below before deployment or merge. Keep bead `sno-7vl` open.
 
 ## Included driver behavior
 

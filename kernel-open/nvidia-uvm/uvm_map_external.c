@@ -1171,6 +1171,13 @@ static NV_STATUS uvm_map_external_allocation(uvm_va_space_t *va_space, UVM_MAP_E
         return NV_ERR_INVALID_ADDRESS;
     }
 
+    status = uvm_va_range_external_map_status(external_range);
+    if (status != NV_OK) {
+        uvm_va_space_up_read_rm(va_space);
+        uvm_processor_mask_cache_free(mapped_gpus);
+        return status;
+    }
+
     uvm_processor_mask_zero(mapped_gpus);
     for (i = 0; i < params->gpuAttributesCount; i++) {
         if (uvm_api_mapping_type_invalid(params->perGpuAttributes[i].gpuMappingType) ||
@@ -1355,6 +1362,10 @@ static NV_STATUS uvm_map_external_sparse(uvm_va_space_t *va_space, UVM_MAP_EXTER
         status = NV_ERR_INVALID_ADDRESS;
         goto out;
     }
+
+    status = uvm_va_range_external_map_status(external_range);
+    if (status != NV_OK)
+        goto out;
 
     mapping_gpu = uvm_va_space_get_gpu_by_uuid_with_gpu_va_space(va_space, &params->gpuUuid);
     if (!mapping_gpu) {
