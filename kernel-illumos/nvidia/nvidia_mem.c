@@ -41,6 +41,10 @@
 
 #include <sys/vmem.h>
 #include <sys/vmsystm.h>
+#include <sys/cpuvar.h>
+#include <sys/disp.h>
+#include <sys/x_call.h>
+#include <sys/x86_archext.h>
 #include <sys/gfx_private.h>
 #include <sys/ddi_impldefs.h>
 #include <sys/pci_impl.h>
@@ -49,6 +53,11 @@
 #include <vm/seg.h>
 #include <vm/seg_kmem.h>
 #include <vm/page.h>
+
+/* Private x86 HAT interfaces from the exact illumos tree used for this build.
+ * hat_i86.h requires _MACHDEP, which is not set for this external driver. */
+#define NV_HAT_PLAT_NOCACHE 0x100000U
+extern caddr_t hat_kpm_pfn2va(pfn_t);
 
 NvU32 nv_dma_remap_peer_mmio = NV_DMA_REMAP_PEER_MMIO_ENABLE;
 
@@ -238,6 +247,84 @@ nvos_free_alloc(nv_illumos_alloc_t *at)
     kmem_free(at, sizeof (*at));
 }
 
+/* Read with mdb before and after an isolated CUDA workload. */
+volatile uint64_t nv_kpm_wc_remap_allocs;
+volatile uint64_t nv_kpm_wc_remap_pages;
+volatile uint64_t nv_kpm_wc_restore_allocs;
+volatile uint64_t nv_kpm_wc_skip_large;
+volatile uint64_t nv_kpm_wc_skip_missing;
+volatile uint64_t nv_kpm_wc_skip_pfn;
+
+static int
+nv_kpm_wc_flush_cpu(xc_arg_t unused1, xc_arg_t unused2, xc_arg_t unused3)
+{
+    (void)unused1;
+    (void)unused2;
+    (void)unused3;
+    os_flush_cpu_write_combine_buffer();
+    invalidate_cache();
+    return 0;
+}
+
+static void
+nv_kpm_wc_flush_all(void)
+{
+    ulong_t set[CPUSET_WORDS];
+    size_t i;
+
+    for (i = 0; i < CPUSET_WORDS; i++)
+        set[i] = ~0UL;
+    kpreempt_disable();
+    xc_sync(0, 0, 0, set, nv_kpm_wc_flush_cpu);
+    kpreempt_enable();
+}
+
+/* Never try to install a 4 KiB PTE over a present KPM large-page entry. */
+static NvBool
+nv_kpm_wc_preflight(nv_illumos_alloc_t *at)
+{
+    NvU32 i;
+
+    for (i = 0; i < at->num_pages; i++)
+    {
+        pfn_t pfn = mmu_btop(at->page_table[i].phys_addr);
+        caddr_t va = hat_kpm_pfn2va(pfn);
+        ssize_t pagesize = hat_getpagesize(kas.a_hat, va);
+
+        if (pagesize != MMU_PAGESIZE)
+        {
+            if (pagesize > MMU_PAGESIZE)
+                atomic_inc_64(&nv_kpm_wc_skip_large);
+            else
+                atomic_inc_64(&nv_kpm_wc_skip_missing);
+            return NV_FALSE;
+        }
+        if (hat_getpfnum(kas.a_hat, va) != pfn)
+        {
+            atomic_inc_64(&nv_kpm_wc_skip_pfn);
+            return NV_FALSE;
+        }
+    }
+    return NV_TRUE;
+}
+
+static void
+nv_kpm_wc_set(nv_illumos_alloc_t *at, NvBool wc)
+{
+    uint_t attr = PROT_READ | PROT_WRITE |
+        (wc ? HAT_MERGING_OK | NV_HAT_PLAT_NOCACHE : HAT_STORECACHING_OK);
+    NvU32 i;
+
+    for (i = 0; i < at->num_pages; i++)
+    {
+        pfn_t pfn = mmu_btop(at->page_table[i].phys_addr);
+        caddr_t va = hat_kpm_pfn2va(pfn);
+
+        hat_devload(kas.a_hat, va, MMU_PAGESIZE, pfn, attr,
+            HAT_LOAD | HAT_LOAD_LOCK | HAT_LOAD_NOCONSIST);
+    }
+}
+
 static void
 nv_free_dma_chunks(nv_illumos_alloc_t *at)
 {
@@ -246,6 +333,14 @@ nv_free_dma_chunks(nv_illumos_alloc_t *at)
     if (at->kva != NULL && at->num_chunks > 1)
         nv_kunmap_phys(at->kva, at->num_pages);
     at->kva = NULL;
+
+    if (at->flags.kpm_wc)
+    {
+        nv_kpm_wc_flush_all();
+        nv_kpm_wc_set(at, NV_FALSE);
+        at->flags.kpm_wc = NV_FALSE;
+        atomic_inc_64(&nv_kpm_wc_restore_allocs);
+    }
 
     for (i = 0; i < at->num_chunks; i++)
     {
@@ -335,7 +430,8 @@ nv_alloc_dma_chunks(nv_state_t *nv, nv_illumos_alloc_t *at, NvU64 chunk_size)
 
         c->len = (size_t)len;
 
-        if (at->flags.zeroed)
+        if (at->flags.zeroed &&
+            at->cache_type != NV_MEMORY_WRITECOMBINED)
             bzero(c->kva, c->len);
 
         for (off = 0; off < len; off += MMU_PAGESIZE, page++)
@@ -343,6 +439,27 @@ nv_alloc_dma_chunks(nv_state_t *nv, nv_illumos_alloc_t *at, NvU64 chunk_size)
             at->page_table[page].virt_addr = c->kva + off;
             at->page_table[page].phys_addr = nv_kva_to_phys(c->kva + off);
         }
+    }
+
+    if (at->cache_type == NV_MEMORY_WRITECOMBINED)
+    {
+        NvBool remap = nv_kpm_wc_preflight(at);
+
+        if (remap)
+        {
+            nv_kpm_wc_flush_all();
+            nv_kpm_wc_set(at, NV_TRUE);
+            at->flags.kpm_wc = NV_TRUE;
+            atomic_inc_64(&nv_kpm_wc_remap_allocs);
+            atomic_add_64(&nv_kpm_wc_remap_pages, at->num_pages);
+        }
+        if (at->flags.zeroed)
+        {
+            for (i = 0; i < nchunks; i++)
+                bzero(at->chunks[i].kva, at->chunks[i].len);
+        }
+        if (remap)
+            os_flush_cpu_write_combine_buffer();
     }
 
     if (nchunks == 1)
