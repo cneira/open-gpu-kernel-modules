@@ -10,6 +10,12 @@
 
 **Spec:** `kernel-illumos/docs/kpm-wc-4k-experiment.md` and the recorded 2026-11-02 panic.
 
+**Progress (2026-11-02):** Illumos source commit `8dcf80d15d` and driver
+commit `a9957fb8` compile in the native build zone. The driver module links;
+the illumos object exports the new symbol. Full illumos `unix`/PI build,
+paired staging, and live validation remain open. The exact illumos commit is
+included as `kernel-illumos/patches/illumos-joyent-kpm-cache.patch`.
+
 ## Global Constraints
 
 - Do not reboot Saruman without explicit user approval.

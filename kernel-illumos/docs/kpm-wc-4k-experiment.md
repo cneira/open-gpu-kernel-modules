@@ -92,4 +92,7 @@ driver-only experiment must not be reused.
 The matching illumos source is branch `fix/sno-27t-kpm-memattr`, commit
 `8dcf80d15d`, based on the October PI's `860a3aca2c76`. A new illumos
 `unix`/PI build is required before loading this driver: the currently
-running kernel does not export `hat_kpm_set_cache`.
+running kernel does not export `hat_kpm_set_cache`. The matching illumos
+commit is also packaged as
+[`kernel-illumos/patches/illumos-joyent-kpm-cache.patch`](../patches/illumos-joyent-kpm-cache.patch)
+for a builder that has the exact October source.
