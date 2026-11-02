@@ -76,11 +76,14 @@ main(void)
     assert(nvGpuOpsChannelRevocationStatus(&target, &channel) == NV_OK);
 
     /* A missing retained instance needs the later global VA-space scan. */
-    assert(nvGpuOpsMissingChannelRevokeStatus(NV_ERR_INVALID_CHANNEL, 1) ==
+    assert(nvGpuOpsMissingChannelStopStatus(NV_ERR_INVALID_CHANNEL, 1) ==
            NV_WARN_MORE_PROCESSING_REQUIRED);
-    assert(nvGpuOpsMissingChannelRevokeStatus(NV_ERR_INVALID_CHANNEL, 0) ==
-           NV_ERR_INVALID_CHANNEL);
-    assert(nvGpuOpsMissingChannelRevokeStatus(NV_ERR_INVALID_STATE, 1) ==
+    /* RM has already stopped a channel whose user handle was freed. */
+    assert(nvGpuOpsMissingChannelStopStatus(NV_ERR_INVALID_CHANNEL, 0) ==
+           NV_OK);
+    assert(nvGpuOpsMissingChannelStopStatus(NV_ERR_INVALID_STATE, 1) ==
+           NV_ERR_INVALID_STATE);
+    assert(nvGpuOpsMissingChannelStopStatus(NV_ERR_INVALID_STATE, 0) ==
            NV_ERR_INVALID_STATE);
     return 0;
 }

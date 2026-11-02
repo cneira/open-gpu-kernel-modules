@@ -30,14 +30,16 @@
 
 /*
  * A retained instance may disappear when the user frees its RM channel
- * during process exit.  Only the lookup failure can be handed to the later
- * all-client VA-space scan; a failure from the stop control stays fatal.
+ * during process exit. RM has already stopped the freed channel, so an
+ * ordinary stop is complete. Revoke still needs the all-client VA-space
+ * scan. This helper is used only for lookup failures; stop-control failures
+ * remain fatal.
  */
 static inline NV_STATUS
-nvGpuOpsMissingChannelRevokeStatus(NV_STATUS lookupStatus, NvBool bRevoke)
+nvGpuOpsMissingChannelStopStatus(NV_STATUS lookupStatus, NvBool bRevoke)
 {
-    if (bRevoke && lookupStatus == NV_ERR_INVALID_CHANNEL)
-        return NV_WARN_MORE_PROCESSING_REQUIRED;
+    if (lookupStatus == NV_ERR_INVALID_CHANNEL)
+        return bRevoke ? NV_WARN_MORE_PROCESSING_REQUIRED : NV_OK;
     return lookupStatus;
 }
 
