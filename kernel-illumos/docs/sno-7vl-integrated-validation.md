@@ -11,7 +11,8 @@ modules from different builds.
 The prior `12a5c28` build had a deferred-range remapping gap. The current
 branch rejects both ordinary and sparse mappings into a range whose
 `UVM_FREE` is pending, before either mapping path can remove the old map.
-The focused test covers pending and active range decisions. Rebuild this
+The focused tests cover pending and active range decisions and execute both
+ioctl admission paths; removing either guard makes the test fail. Rebuild this
 revision against the exact kernel, then run the live acceptance sequence
 below before deployment or merge. Keep bead `sno-7vl` open.
 

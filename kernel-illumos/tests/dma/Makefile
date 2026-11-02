@@ -50,6 +50,7 @@ check: all
 	python3 test_kernel_channel_bind.py
 	python3 test_uvm_import_owner_lifetime.py
 	python3 test_uvm_import_owner_failure.py
+	python3 test_uvm_pending_map_gate.py
 
 clean:
 	rm -f $(TESTS)
