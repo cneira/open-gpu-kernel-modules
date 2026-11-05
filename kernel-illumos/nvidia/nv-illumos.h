@@ -248,7 +248,7 @@ typedef struct nv_illumos_file_private_s {
     nvidia_stack_t         *sp;
     int                     open_rc;
     NV_STATUS               adapter_status;
-    uint32_t                refcnt;         /* open + nv_get_file_private() */
+    uint32_t                refcnt;         /* open + RM + devmap handles */
     kmutex_t                ref_lock;
     taskq_ent_t             destroy_ent;
 
@@ -425,6 +425,7 @@ int  nv_clone_init(void);
 void nv_clone_fini(void);
 nv_illumos_file_private_t *nv_clone_lookup(minor_t minor);
 nv_illumos_file_private_t *nv_file_private_hold(dev_t dev);
+void nv_file_private_hold_mapping(nv_illumos_file_private_t *);
 void nv_file_private_rele(nv_illumos_file_private_t *);
 int  nvidia_ioctl(dev_t, int, intptr_t, int, cred_t *, int *);
 file_t *nv_cap_hold_file(const nv_cap_t *, int);

@@ -45,7 +45,8 @@
  * devmap callbacks.  Each user mapping gets an nv_devmap_priv_t on the open
  * instance's list; dup and partial unmap create more.  Sysmem mappings hold
  * a reference on the allocation so an early nv_free_pages() cannot free
- * pages that are still mapped.
+ * pages that are still mapped.  They also hold the open instance: specfs
+ * can call close(9E) from VOP_DELMAP before devmap_unmap runs.
  */
 static nv_devmap_priv_t *
 nv_devmap_priv_create(nv_illumos_file_private_t *nvifp, devmap_cookie_t dhp,
@@ -63,6 +64,8 @@ nv_devmap_priv_create(nv_illumos_file_private_t *nvifp, devmap_cookie_t dhp,
 
     if (at != NULL)
         nv_alloc_hold(at);
+
+    nv_file_private_hold_mapping(nvifp);
 
     if (nvifp->nvis != NULL)
         sema_p(&nvifp->nvis->mmap_lock);
@@ -88,6 +91,7 @@ nv_devmap_priv_destroy(nv_devmap_priv_t *dp)
         nv_alloc_rele(dp->at);
 
     kmem_free(dp, sizeof (*dp));
+    nv_file_private_rele(nvifp);
 }
 
 typedef struct nv_devmap_setup_s {

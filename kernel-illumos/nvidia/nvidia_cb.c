@@ -171,6 +171,16 @@ nv_file_private_hold(dev_t dev)
     return (nvifp);
 }
 
+/* An existing devmap handle may be duplicated after the fd has closed. */
+void
+nv_file_private_hold_mapping(nv_illumos_file_private_t *nvifp)
+{
+    mutex_enter(&nvifp->ref_lock);
+    ASSERT(nvifp->refcnt != 0);
+    nvifp->refcnt++;
+    mutex_exit(&nvifp->ref_lock);
+}
+
 static void nv_file_private_destroy(nv_illumos_file_private_t *);
 
 static void
