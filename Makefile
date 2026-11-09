@@ -77,6 +77,18 @@ modules_install:
 endif
 
 ###########################################################################
+# Generate a cscope database for the source tree.
+###########################################################################
+
+.PHONY: cscope
+cscope:
+	find kernel-illumos kernel-open src nouveau -type f \( \
+		-name '*.c' -o -name '*.h' -o -name '*.cc' -o -name '*.cpp' -o \
+		-name '*.cxx' -o -name '*.hpp' -o -name '*.hh' \) | \
+		LC_ALL=C sort > cscope.files
+	cscope -bqku -i cscope.files
+
+###########################################################################
 # clean
 ###########################################################################
 

@@ -5,5 +5,9 @@
 _out/
 .worktrees/
 __pycache__/
+/cscope.files
+/cscope.out
+/cscope.in.out
+/cscope.po.out
 kernel-illumos/tests/console/scanout_range_test
 kernel-illumos/tests/console/vis_user_ioctl_test
