@@ -128,7 +128,7 @@ sequenceDiagram
   D->>V: UVM top half
   D->>R: RM ISR and queued bottom half
   U->>D: close
-  D->>R: cleanup file; stop on last use
+  D->>R: cleanup file#59; stop on last use
 ```
 
 ## 5. High-value paths when investigating a bug
